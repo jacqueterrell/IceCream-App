@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "856480344082",
+    "project_id": "fire-ice-cream-request",
+    "storage_bucket": "fire-ice-cream-request.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:856480344082:android:7024e9c3fc8df98e1390cb",
+        "android_client_info": {
+          "package_name": "com.sandboxcastles.icecreamrequest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZnP49lQ3lZ4Xl8g8WAXzPeXnuFgbrtjc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

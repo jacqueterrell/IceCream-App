@@ -1,4 +1,4 @@
-package com.example.icecream_app.ui.theme
+package com.sandboxcastles.icecreamrequest.ui.theme
 
 import android.app.Activity
 import android.os.Build

@@ -1,4 +1,4 @@
-package com.example.icecream_app.ui.theme
+package com.sandboxcastles.icecreamrequest.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
