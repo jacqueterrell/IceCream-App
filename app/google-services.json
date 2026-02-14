@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "420537244164",
+    "project_id": "ice-cream-app-c265b",
+    "storage_bucket": "ice-cream-app-c265b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:420537244164:android:5e402588f7da6c3fd1b351",
+        "android_client_info": {
+          "package_name": "com.icecreamapp.sweethearts"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCudLjbCBRBgLsbvMnb5xRIuk-qN2WejO4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
