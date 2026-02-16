@@ -36,7 +36,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -130,19 +129,21 @@ fun MainScreen(
     }
 
     Scaffold(
-        modifier = modifier
-            .twoFingerLongPress(durationMs = 2000L) { showPasscodeDialog = true },
+        modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .twoFingerLongPress(durationMs = 2000L) { showPasscodeDialog = true },
         ) {
             when {
                 showListScreen -> {
+                    val dropoffLoadError by viewModel.dropoffLoadError.collectAsState()
                     DropoffListScreen(
                         dropoffDisplays = dropoffDisplays,
+                        dropoffLoadError = dropoffLoadError,
                         viewModel = viewModel,
                         onBack = { showListScreen = false },
                     )
@@ -154,7 +155,9 @@ fun MainScreen(
                 }
                 else -> {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .twoFingerLongPress(durationMs = 2000L) { showPasscodeDialog = true },
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     ) {
@@ -207,16 +210,6 @@ fun MainScreen(
                                     } else {
                                         Text("Request Ice Cream Dropoff")
                                     }
-                                }
-                                TextButton(
-                                    onClick = { showPasscodeDialog = true },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(
-                                        "Staff: view dropoff requests",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
                                 }
                             }
                         }
@@ -301,6 +294,7 @@ fun MainScreen(
 @Composable
 private fun DropoffListScreen(
     dropoffDisplays: List<DropoffRequestDisplay>,
+    dropoffLoadError: String?,
     viewModel: IceCreamViewModel,
     onBack: () -> Unit,
 ) {
@@ -324,6 +318,23 @@ private fun DropoffListScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (dropoffLoadError != null) {
+                item(key = "load_error") {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = dropoffLoadError,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+                }
+            }
             items(dropoffDisplays, key = { it.request.id }) { display ->
                 DropoffRequestRow(
                     display = display,
@@ -362,7 +373,7 @@ private fun DropoffRequestRow(
         val scrollState = rememberScrollState()
         Row(
             modifier = Modifier
-                .width(cardWidth + 80.dp)
+                .width(cardWidth + 96.dp)
                 .horizontalScroll(scrollState),
             horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
@@ -392,11 +403,11 @@ private fun DropoffRequestRow(
             Button(
                 onClick = onDone,
                 modifier = Modifier
-                    .width(80.dp)
+                    .width(96.dp)
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
             ) {
-                Text("Done")
+                Text("Done", maxLines = 1)
             }
         }
     }

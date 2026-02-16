@@ -30,13 +30,15 @@ fun Modifier.twoFingerLongPress(
                     pressedPointerIds.remove(change.id)
                 }
             }
-            holdJob?.cancel()
             if (pressedPointerIds.size >= 2) {
-                holdJob = scope.launch {
-                    delay(durationMs)
-                    onTrigger()
+                if (holdJob == null) {
+                    holdJob = scope.launch {
+                        delay(durationMs)
+                        onTrigger()
+                    }
                 }
             } else {
+                holdJob?.cancel()
                 holdJob = null
             }
         }

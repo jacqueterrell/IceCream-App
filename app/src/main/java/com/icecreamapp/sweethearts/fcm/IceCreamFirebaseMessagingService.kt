@@ -24,18 +24,23 @@ class IceCreamFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        message.notification?.let { notification ->
-            showNotification(
-                title = notification.title ?: getString(R.string.app_name),
-                body = notification.body ?: "",
-            )
-        }
-        // Data payload: message.data can be used for custom handling.
+        val title = message.notification?.title
+            ?: message.data["title"]
+            ?: getString(R.string.app_name)
+        val body = message.notification?.body
+            ?: message.data["body"]
+            ?: message.data["message"]
+            ?: ""
+        showNotification(title = title, body = body)
     }
 
     private fun showNotification(title: String, body: String) {
         ensureNotificationChannel()
-        val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra(MainActivity.EXTRA_PUSH_TITLE, title)
+            putExtra(MainActivity.EXTRA_PUSH_BODY, body)
+        }
         val pending = PendingIntent.getActivity(
             this,
             0,
@@ -48,8 +53,12 @@ class IceCreamFirebaseMessagingService : FirebaseMessagingService() {
             .setContentText(body)
             .setAutoCancel(true)
             .setContentIntent(pending)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+        val id = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(id, notification)
     }
 
     private fun ensureNotificationChannel() {
@@ -57,13 +66,15 @@ class IceCreamFirebaseMessagingService : FirebaseMessagingService() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT,
-        )
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            setShowBadge(true)
+            enableVibration(true)
+        }
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
     }
 
     companion object {
         private const val CHANNEL_ID = "ice_cream_default"
-        private const val NOTIFICATION_ID = 1
     }
 }

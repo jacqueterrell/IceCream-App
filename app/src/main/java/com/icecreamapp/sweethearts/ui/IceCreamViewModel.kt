@@ -55,16 +55,20 @@ class IceCreamViewModel(
     private val _dropoffDisplays = MutableStateFlow<List<DropoffRequestDisplay>>(emptyList())
     val dropoffDisplays: StateFlow<List<DropoffRequestDisplay>> = _dropoffDisplays.asStateFlow()
 
+    private val _dropoffLoadError = MutableStateFlow<String?>(null)
+    val dropoffLoadError: StateFlow<String?> = _dropoffLoadError.asStateFlow()
+
     init {
         loadMenu()
         viewModelScope.launch {
             dropoffRepository.dropoffRequestsFlow()
-                .combine(_currentLocation) { requests, location ->
-                    requests to location
+                .combine(_currentLocation) { result, location ->
+                    result to location
                 }
-                .collect { (requests, location) ->
+                .collect { (result, location) ->
+                    _dropoffLoadError.value = result.loadError
                     val list = withContext(Dispatchers.IO) {
-                        requests.map { req ->
+                        result.requests.map { req ->
                             val address = reverseGeocode(application, req.latitude, req.longitude)
                             val dist = location?.let { (lat, lng) ->
                                 distanceMeters(lat, lng, req.latitude, req.longitude)

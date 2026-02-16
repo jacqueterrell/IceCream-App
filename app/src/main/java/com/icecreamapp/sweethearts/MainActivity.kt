@@ -22,6 +22,11 @@ import com.icecreamapp.sweethearts.ui.theme.IceCreamAppTheme
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_PUSH_TITLE = "push_title"
+        const val EXTRA_PUSH_BODY = "push_body"
+    }
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { getFcmToken() }
@@ -29,6 +34,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        intent?.let { i ->
+            i.getStringExtra(EXTRA_PUSH_TITLE)?.let { title ->
+                i.getStringExtra(EXTRA_PUSH_BODY)?.let { body ->
+                    com.icecreamapp.sweethearts.fcm.PushMessageStore.set(title, body)
+                }
+            }
+        }
         requestNotificationPermissionIfNeeded()
         setContent {
             IceCreamAppTheme {
@@ -59,5 +71,7 @@ class MainActivity : ComponentActivity() {
                 task.result?.let { token -> FcmTokenRepository.registerToken(token) }
             }
         }
+        // Subscribe to "all-users" so curl with "topic": "all-users" delivers to this device.
+        FirebaseMessaging.getInstance().subscribeToTopic("all-users")
     }
 }
