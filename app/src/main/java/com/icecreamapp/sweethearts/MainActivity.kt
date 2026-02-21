@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
+import com.google.android.gms.maps.MapsInitializer
 import com.google.firebase.messaging.FirebaseMessaging
 import com.icecreamapp.sweethearts.fcm.FcmTokenRepository
 import com.icecreamapp.sweethearts.ui.MainScreen
@@ -42,7 +43,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestNotificationPermissionIfNeeded()
-        setContent {
+        MapsInitializer.initialize(this, MapsInitializer.Renderer.LEGACY) {
+            setContent {
             IceCreamAppTheme {
                 val app = LocalContext.current.applicationContext as android.app.Application
                 val viewModel: IceCreamViewModel = viewModel(factory = IceCreamViewModelFactory(app))
@@ -50,6 +52,7 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
             }
         }
     }

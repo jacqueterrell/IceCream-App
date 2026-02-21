@@ -1,5 +1,16 @@
 <resources>
     <string name="app_name">Ice Cream App</string>
+    <!--
+         REQUIRED: Replace the value below with your real Maps SDK for Android API key.
+         The map will not load until you do this.
+
+         1. Google Cloud Console → APIs & Services → Library → enable "Maps SDK for Android"
+         2. Credentials → Create API key (or use existing) → Application restrictions: Android apps
+            → Add: Package name = com.icecreamapp.sweethearts
+                   SHA-1 = 68:20:A7:9E:E2:56:D3:15:92:29:E4:F0:29:91:1F:CC:4B:9B:09:C5
+         3. Paste that API key below, replacing YOUR_GOOGLE_MAPS_API_KEY
+    -->
+    <string name="google_maps_api_key" translatable="false">AIzaSyBW3QMGx958wmHwmLncEN2GVKYgffgNw6w</string>
     <string name="default_notification_channel_id">ice_cream_default</string>
     <string name="notification_channel_name">Ice Cream Notifications</string>
 </resources>

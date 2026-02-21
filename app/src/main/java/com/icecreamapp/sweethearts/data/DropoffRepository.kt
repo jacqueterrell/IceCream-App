@@ -1,5 +1,6 @@
 package com.icecreamapp.sweethearts.data
 
+import android.util.Log
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.delay
@@ -43,7 +44,8 @@ class DropoffRepository {
             val phoneNumber = map["phoneNumber"] as? String ?: return@mapNotNull null
             val lat = (map["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
             val lng = (map["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-            DropoffRequest(id = id, name = name, phoneNumber = phoneNumber, latitude = lat, longitude = lng)
+            val status = map["status"] as? String
+            DropoffRequest(id = id, name = name, phoneNumber = phoneNumber, latitude = lat, longitude = lng, status = status)
         }
         DropoffRequestsResult(requests = requests)
     }.getOrElse { e ->
@@ -56,4 +58,67 @@ class DropoffRepository {
             .call(mapOf("dropoffId" to dropoffId))
             .await()
     }
+
+    suspend fun updateDropoffStatus(dropoffId: String, status: String): Result<Unit> =
+        kotlin.runCatching {
+            Firebase.functions
+                .getHttpsCallable("updateDropoffStatus")
+                .call(mapOf("dropoffId" to dropoffId, "status" to status))
+                .await()
+        }
+
+    suspend fun getOptimizedRoute(
+        originLat: Double,
+        originLng: Double,
+        waypoints: List<DropoffRequest>,
+    ): Result<OptimizedRouteResponse> = kotlin.runCatching {
+        if (waypoints.isEmpty()) {
+            Log.d(TAG_DIRECTIONS, "getOptimizedRoute: no waypoints, returning empty")
+            return@runCatching OptimizedRouteResponse(
+                waypointOrder = emptyList(),
+                legDurationsSeconds = emptyList(),
+                encodedPolyline = "",
+            )
+        }
+        Log.d(TAG_DIRECTIONS, "getOptimizedRoute: calling Cloud Function (origin=$originLat,$originLng, waypoints=${waypoints.size})")
+        val result = Firebase.functions
+            .getHttpsCallable("getOptimizedRoute")
+            .call(
+                mapOf(
+                    "origin" to mapOf("latitude" to originLat, "longitude" to originLng),
+                    "waypoints" to waypoints.map { w ->
+                        mapOf(
+                            "id" to w.id,
+                            "name" to w.name,
+                            "latitude" to w.latitude,
+                            "longitude" to w.longitude,
+                        )
+                    },
+                )
+            )
+            .await()
+        @Suppress("UNCHECKED_CAST")
+        val data = result.getData() as? Map<String, Any?> ?: throw IllegalStateException("No data")
+        val waypointOrder = (data["waypointOrder"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() } ?: emptyList()
+        val legDurationsSeconds = (data["legDurationsSeconds"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() } ?: emptyList()
+        val encodedPolyline = data["encodedPolyline"] as? String ?: ""
+        Log.d(TAG_DIRECTIONS, "getOptimizedRoute: success waypointOrder=${waypointOrder.size} legs=${legDurationsSeconds.size} polylineLen=${encodedPolyline.length}")
+        OptimizedRouteResponse(
+            waypointOrder = waypointOrder,
+            legDurationsSeconds = legDurationsSeconds,
+            encodedPolyline = encodedPolyline,
+        )
+    }.also { result ->
+        result.exceptionOrNull()?.let { e ->
+            Log.w(TAG_DIRECTIONS, "getOptimizedRoute: failure", e)
+        }
+    }
 }
+
+private const val TAG_DIRECTIONS = "DirectionsAPI"
+
+data class OptimizedRouteResponse(
+    val waypointOrder: List<Int>,
+    val legDurationsSeconds: List<Long>,
+    val encodedPolyline: String,
+)
