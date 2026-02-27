@@ -5,7 +5,10 @@ import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.tasks.await
 
 /** Result of loading dropoff requests: either data or a load error message. */
@@ -16,18 +19,30 @@ data class DropoffRequestsResult(
 
 private const val POLL_INTERVAL_MS = 5000L
 
+/** Use this to request an immediate refetch so map/list update when admin changes status. */
+private val refreshTrigger = MutableSharedFlow<Unit>(replay = 0)
+
 class DropoffRepository {
 
     /**
      * Fetches dropoff requests via Cloud Function (no direct Firestore read needed).
      * Emits immediately, then polls every [POLL_INTERVAL_MS] while collected.
+     * Also emits whenever [requestDropoffRefresh] is called (e.g. after admin Approve/Cancel/Done).
      */
-    fun dropoffRequestsFlow(): Flow<DropoffRequestsResult> = flow {
-        emit(fetchDropoffRequests())
-        while (true) {
-            delay(POLL_INTERVAL_MS)
+    fun dropoffRequestsFlow(): Flow<DropoffRequestsResult> = merge(
+        flow {
             emit(fetchDropoffRequests())
-        }
+            while (true) {
+                delay(POLL_INTERVAL_MS)
+                emit(fetchDropoffRequests())
+            }
+        },
+        refreshTrigger.map { fetchDropoffRequests() }
+    )
+
+    /** Triggers an immediate refetch on the next collection of [dropoffRequestsFlow]. Call after admin updates status (Approved, Canceled, Done). */
+    suspend fun requestDropoffRefresh() {
+        refreshTrigger.emit(Unit)
     }
 
     suspend fun fetchDropoffRequests(): DropoffRequestsResult = runCatching {

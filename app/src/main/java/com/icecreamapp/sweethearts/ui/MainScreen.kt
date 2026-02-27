@@ -49,9 +49,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle.State
 import android.os.Bundle
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapView
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.PolylineOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -350,10 +352,83 @@ fun MainScreen(
     }
 }
 
-/** Holder for map and polyline so we can update polyline when route changes. */
+/** Holder for map, polyline, and markers so we can update when data changes. */
 private class MapHolder {
     var googleMap: com.google.android.gms.maps.GoogleMap? = null
     var polyline: com.google.android.gms.maps.model.Polyline? = null
+    val markers = mutableListOf<com.google.android.gms.maps.model.Marker>()
+    var hasFittedToRoute = false
+}
+
+private fun applyMarkersAndRoute(
+    map: com.google.android.gms.maps.GoogleMap,
+    holder: MapHolder,
+    startLatLng: LatLng?,
+    dropoffMarkers: List<Pair<LatLng, String>>,
+    routePolyline: List<Pair<Double, Double>>,
+) {
+    holder.markers.forEach { it.remove() }
+    holder.markers.clear()
+    startLatLng?.let { latLng ->
+        map.addMarker(com.google.android.gms.maps.model.MarkerOptions().position(latLng).title("Start"))?.let { holder.markers.add(it) }
+    }
+    dropoffMarkers.forEach { (latLng, title) ->
+        map.addMarker(com.google.android.gms.maps.model.MarkerOptions().position(latLng).title(title))?.let { holder.markers.add(it) }
+    }
+    applyRoutePolyline(map, holder, routePolyline)
+}
+
+private fun applyRoutePolyline(
+    map: com.google.android.gms.maps.GoogleMap,
+    holder: MapHolder,
+    routePolyline: List<Pair<Double, Double>>,
+) {
+    holder.polyline?.remove()
+    holder.polyline = null
+    if (routePolyline.isNotEmpty()) {
+        val points = routePolyline.map { LatLng(it.first, it.second) }
+        holder.polyline = map.addPolyline(
+            PolylineOptions()
+                .addAll(points)
+                .color(android.graphics.Color.parseColor("#1565C0"))
+                .width(24f)
+                .geodesic(false),
+        )
+    }
+}
+
+// Minimum span (in degrees) to use fit-bounds; below this use center+zoom so very close pins don't cause "view size too small".
+private const val MIN_BOUNDS_SPAN_DEGREES = 0.002
+
+/** Build bounds that include all markers and route points, then move camera to fit with padding. Uses zoom when fewer than 2 distinct points or when bounds are very small (pins very close) to avoid "Map size should not be 0" / invalid bounds. */
+private fun fitMapToRouteAndMarkers(
+    map: com.google.android.gms.maps.GoogleMap,
+    startLatLng: LatLng?,
+    dropoffMarkers: List<Pair<LatLng, String>>,
+    routePolyline: List<Pair<Double, Double>>,
+    fallbackCenter: LatLng,
+    paddingPx: Int = 120,
+) {
+    val builder = LatLngBounds.builder()
+    startLatLng?.let { builder.include(it) }
+    dropoffMarkers.forEach { (latLng, _) -> builder.include(latLng) }
+    routePolyline.forEach { (lat, lng) -> builder.include(LatLng(lat, lng)) }
+    val bounds = builder.build()
+    val southwest = bounds.southwest
+    val northeast = bounds.northeast
+    val latSpan = kotlin.math.abs(northeast.latitude - southwest.latitude)
+    val lngSpan = kotlin.math.abs(northeast.longitude - southwest.longitude)
+    val hasValidBounds = southwest != northeast
+    val notTooTight = hasValidBounds && latSpan >= MIN_BOUNDS_SPAN_DEGREES && lngSpan >= MIN_BOUNDS_SPAN_DEGREES
+    if (notTooTight) {
+        map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, paddingPx))
+    } else {
+        val singlePoint = startLatLng ?: dropoffMarkers.firstOrNull()?.first
+            ?: routePolyline.firstOrNull()?.let { LatLng(it.first, it.second) }
+            ?: fallbackCenter
+        // Zoom 15 shows streets and pins clearly when bounds aren't used
+        map.moveCamera(CameraUpdateFactory.newLatLngZoom(singlePoint, 15f))
+    }
 }
 
 @Composable
@@ -384,25 +459,13 @@ private fun RouteMapWithNativePolyline(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        // MapView never receives ON_START/ON_RESUME if we're already resumed when composed
+        val state = lifecycleOwner.lifecycle.currentState
+        if (state >= State.STARTED) mapView.onStart()
+        if (state >= State.RESUMED) mapView.onResume()
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView.onDestroy()
-        }
-    }
-
-    LaunchedEffect(routePolyline) {
-        holder.googleMap?.let { map ->
-            holder.polyline?.remove()
-            holder.polyline = null
-            if (routePolyline.isNotEmpty()) {
-                val points = routePolyline.map { LatLng(it.first, it.second) }
-                holder.polyline = map.addPolyline(
-                    PolylineOptions()
-                        .addAll(points)
-                        .color(android.graphics.Color.parseColor("#0D47A1"))
-                        .width(20f),
-                )
-            }
         }
     }
 
@@ -416,19 +479,25 @@ private fun RouteMapWithNativePolyline(
                         map.uiSettings.apply {
                             isZoomControlsEnabled = true
                         }
-                        map.moveCamera(CameraUpdateFactory.newLatLngZoom(center, 12f))
-                        startLatLng?.let { map.addMarker(com.google.android.gms.maps.model.MarkerOptions().position(it).title("Start")) }
-                        dropoffMarkers.forEachIndexed { _, (latLng, title) ->
-                            map.addMarker(com.google.android.gms.maps.model.MarkerOptions().position(latLng).title(title))
+                        applyMarkersAndRoute(map, holder, startLatLng, dropoffMarkers, routePolyline)
+                        // Defer camera update until MapView has been laid out (avoids "Map size should not be 0")
+                        mapView.post {
+                            if (routePolyline.isNotEmpty()) {
+                                fitMapToRouteAndMarkers(map, startLatLng, dropoffMarkers, routePolyline, center)
+                                holder.hasFittedToRoute = true
+                            } else {
+                                map.moveCamera(CameraUpdateFactory.newLatLngZoom(center, 15f))
+                            }
                         }
-                        if (routePolyline.isNotEmpty()) {
-                            val points = routePolyline.map { LatLng(it.first, it.second) }
-                            holder.polyline = map.addPolyline(
-                                PolylineOptions()
-                                    .addAll(points)
-                                    .color(android.graphics.Color.parseColor("#0D47A1"))
-                                    .width(20f),
-                            )
+                    }
+                } else {
+                    holder.googleMap?.let { map ->
+                        applyMarkersAndRoute(map, holder, startLatLng, dropoffMarkers, routePolyline)
+                        if (routePolyline.isNotEmpty() && !holder.hasFittedToRoute) {
+                            mapView.post {
+                                fitMapToRouteAndMarkers(map, startLatLng, dropoffMarkers, routePolyline, center)
+                                holder.hasFittedToRoute = true
+                            }
                         }
                     }
                 }

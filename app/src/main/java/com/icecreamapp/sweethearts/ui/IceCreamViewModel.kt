@@ -190,6 +190,7 @@ class IceCreamViewModel(
         _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
         viewModelScope.launch {
             dropoffRepository.markDropoffDone(dropoffId)
+                .onSuccess { dropoffRepository.requestDropoffRefresh() }
         }
     }
 
@@ -200,6 +201,7 @@ class IceCreamViewModel(
                     if (status == "Canceled") {
                         _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
                     }
+                    dropoffRepository.requestDropoffRefresh()
                 }
         }
     }
