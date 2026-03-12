@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Ice Cream App</string>
+    <string name="app_name">Ice Cream Now</string>
     <!--
          REQUIRED: Replace the value below with your real Maps SDK for Android API key.
          The map will not load until you do this.
