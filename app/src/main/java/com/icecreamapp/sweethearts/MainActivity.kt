@@ -11,10 +11,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
 import com.google.android.gms.maps.MapsInitializer
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import com.icecreamapp.sweethearts.fcm.FcmTokenRepository
 import com.icecreamapp.sweethearts.ui.MainScreen
 import com.icecreamapp.sweethearts.ui.IceCreamViewModel
@@ -43,17 +47,27 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestNotificationPermissionIfNeeded()
-        MapsInitializer.initialize(this, MapsInitializer.Renderer.LEGACY) {
-            setContent {
-            IceCreamAppTheme {
-                val app = LocalContext.current.applicationContext as android.app.Application
-                val viewModel: IceCreamViewModel = viewModel(factory = IceCreamViewModelFactory(app))
-                MainScreen(
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize(),
-                )
+        lifecycleScope.launch {
+            ensureAnonymousSignIn()
+            MapsInitializer.initialize(this@MainActivity, MapsInitializer.Renderer.LEGACY) {
+                setContent {
+                    IceCreamAppTheme {
+                        val app = LocalContext.current.applicationContext as android.app.Application
+                        val viewModel: IceCreamViewModel = viewModel(factory = IceCreamViewModelFactory(app))
+                        MainScreen(
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
-            }
+        }
+    }
+
+    private suspend fun ensureAnonymousSignIn() {
+        val auth = FirebaseAuth.getInstance()
+        if (auth.currentUser == null) {
+            auth.signInAnonymously().await()
         }
     }
 
