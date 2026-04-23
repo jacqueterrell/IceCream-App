@@ -51,6 +51,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.Lifecycle.State
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.LatLngBounds
@@ -76,6 +77,7 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.icecreamapp.sweethearts.data.DropoffRequestDisplay
 import com.icecreamapp.sweethearts.data.DropoffWithEta
 import com.icecreamapp.sweethearts.data.IceCreamMenuItem
+import com.icecreamapp.sweethearts.AdminConfig
 import com.icecreamapp.sweethearts.util.formatDistance
 import com.icecreamapp.sweethearts.ui.theme.IceCreamAppTheme
 import java.text.SimpleDateFormat
@@ -161,6 +163,15 @@ fun MainScreen(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
+        val leaveAdminList: () -> Unit = {
+            viewModel.setAdminSessionPasscode(null)
+            viewModel.clearHiddenFromAdminList()
+            showListScreen = false
+        }
+        // System back from admin list must also clear the server "admin" session,
+        // or every poll will keep calling getDropoffRequests with the passcode
+        // and the main map will show everyone's dropoffs.
+        BackHandler(enabled = showListScreen) { leaveAdminList() }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -180,10 +191,7 @@ fun MainScreen(
                         dropoffDisplays = pendingOnly,
                         dropoffLoadError = dropoffLoadError,
                         viewModel = viewModel,
-                        onBack = {
-                            viewModel.clearHiddenFromAdminList()
-                            showListScreen = false
-                        },
+                        onBack = leaveAdminList,
                     )
                 }
                 loading && menu.isEmpty() -> {
@@ -335,7 +343,8 @@ fun MainScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (passcodeInput == "11233") {
+                        if (passcodeInput == AdminConfig.PASSCODE) {
+                            viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
                             showListScreen = true
                             showPasscodeDialog = false
                             passcodeInput = ""

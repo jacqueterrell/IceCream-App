@@ -24,6 +24,19 @@ private val refreshTrigger = MutableSharedFlow<Unit>(replay = 0)
 
 class DropoffRepository {
 
+    @Volatile
+    private var adminSessionPasscode: String? = null
+
+    /** Set when user unlocks the admin list; must match server [ADMIN_PASSCODE]. */
+    fun setAdminSessionPasscode(passcode: String?) {
+        adminSessionPasscode = passcode
+    }
+
+    private fun withAdminParams(base: Map<String, Any>): Map<String, Any> {
+        val c = adminSessionPasscode
+        return if (c == null) base else base + ("adminPasscode" to c)
+    }
+
     /**
      * Fetches dropoff requests via Cloud Function (no direct Firestore read needed).
      * Emits immediately, then polls every [POLL_INTERVAL_MS] while collected.
@@ -46,10 +59,15 @@ class DropoffRepository {
     }
 
     suspend fun fetchDropoffRequests(): DropoffRequestsResult = runCatching {
-        val result = Firebase.functions
-            .getHttpsCallable("getDropoffRequests")
-            .call()
-            .await()
+        val callable = Firebase.functions.getHttpsCallable("getDropoffRequests")
+        val task = if (adminSessionPasscode == null) {
+            callable.call()
+        } else {
+            callable.call(
+                withAdminParams(emptyMap()),
+            )
+        }
+        val result = task.await()
         @Suppress("UNCHECKED_CAST")
         val data = result.getData() as? Map<String, Any?> ?: return@runCatching DropoffRequestsResult(emptyList())
         val rawList = data["requests"] as? List<Map<String, Any>> ?: emptyList()
@@ -70,7 +88,7 @@ class DropoffRepository {
     suspend fun markDropoffDone(dropoffId: String): Result<Unit> = kotlin.runCatching {
         Firebase.functions
             .getHttpsCallable("markDropoffDone")
-            .call(mapOf("dropoffId" to dropoffId))
+            .call(withAdminParams(mapOf("dropoffId" to dropoffId)))
             .await()
     }
 
@@ -78,7 +96,14 @@ class DropoffRepository {
         kotlin.runCatching {
             Firebase.functions
                 .getHttpsCallable("updateDropoffStatus")
-                .call(mapOf("dropoffId" to dropoffId, "status" to status))
+                .call(
+                    withAdminParams(
+                        mapOf(
+                            "dropoffId" to dropoffId,
+                            "status" to status,
+                        ),
+                    ),
+                )
                 .await()
         }
 

@@ -190,24 +190,46 @@ class IceCreamViewModel(
         _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
         viewModelScope.launch {
             dropoffRepository.markDropoffDone(dropoffId)
-                .onSuccess { dropoffRepository.requestDropoffRefresh() }
+                .onSuccess { 
+                    dropoffRepository.requestDropoffRefresh()
+                }
+                .onFailure { e ->
+                    _message.value = "Failed to mark as done: ${e.message}"
+                    // Optional: remove from hidden list on failure so it reappears
+                    _hiddenFromAdminList.value = _hiddenFromAdminList.value - dropoffId
+                }
         }
     }
 
     fun updateDropoffStatus(dropoffId: String, status: String) {
+        // Optimistically hide from the list immediately
+        _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
         viewModelScope.launch {
             dropoffRepository.updateDropoffStatus(dropoffId, status)
                 .onSuccess {
-                    if (status == "Canceled") {
-                        _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
-                    }
                     dropoffRepository.requestDropoffRefresh()
+                }
+                .onFailure { e ->
+                    _message.value = "Failed to update status to $status: ${e.message}"
+                    // Re-show if it failed
+                    _hiddenFromAdminList.value = _hiddenFromAdminList.value - dropoffId
                 }
         }
     }
 
     fun clearHiddenFromAdminList() {
         _hiddenFromAdminList.value = emptySet()
+    }
+
+    /**
+     * When set, dropoff API calls include [adminPasscode] for server-side admin actions.
+     * Clear when leaving the admin list.
+     */
+    fun setAdminSessionPasscode(passcode: String?) {
+        dropoffRepository.setAdminSessionPasscode(passcode)
+        viewModelScope.launch {
+            dropoffRepository.requestDropoffRefresh()
+        }
     }
 
     /**
