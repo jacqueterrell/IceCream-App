@@ -48,9 +48,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        requestNotificationPermissionIfNeeded()
         lifecycleScope.launch {
             ensureAnonymousSignIn()
+            // registerDeviceToken requires auth — run after anonymous sign-in
+            requestNotificationPermissionIfNeeded()
             MapsInitializer.initialize(this@MainActivity, MapsInitializer.Renderer.LEGACY) {
                 setContent {
                     IceCreamAppTheme {

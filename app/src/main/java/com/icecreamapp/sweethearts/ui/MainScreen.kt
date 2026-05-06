@@ -172,6 +172,7 @@ fun MainScreen(
         }
     }
 
+    val dropoffCanceledMessage by viewModel.dropoffCanceledMessage.collectAsState()
     val dropoffSuccess by viewModel.dropoffSuccess.collectAsState()
     val dropoffError by viewModel.dropoffError.collectAsState()
     val dropoffErrorMessage by viewModel.dropoffErrorMessage.collectAsState()
@@ -384,6 +385,18 @@ fun MainScreen(
         }
     }
 
+    if (dropoffCanceledMessage != null) {
+        AlertDialog(
+            onDismissRequest = viewModel::acknowledgeDropoffCanceledAlert,
+            title = { Text(stringResource(R.string.dropoff_canceled_alert_title)) },
+            text = { Text(dropoffCanceledMessage!!) },
+            confirmButton = {
+                Button(onClick = viewModel::acknowledgeDropoffCanceledAlert) {
+                    Text("OK")
+                }
+            },
+        )
+    }
     if (dropoffSuccess) {
         AlertDialog(
             onDismissRequest = viewModel::clearDropoffSuccess,

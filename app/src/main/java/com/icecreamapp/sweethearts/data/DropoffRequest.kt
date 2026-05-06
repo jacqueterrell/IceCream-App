@@ -24,6 +24,11 @@ data class DropoffRequest(
         return s !in TerminalStatuses
     }
 
+    fun isCanceledStatus(): Boolean {
+        val s = status?.trim()?.lowercase(Locale.ROOT) ?: return false
+        return s == "canceled" || s == "cancelled"
+    }
+
     companion object {
         private val TerminalStatuses = setOf(
             "approved",

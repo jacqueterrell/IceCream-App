@@ -20,4 +20,6 @@
     <string name="name_required_error">Name is required</string>
     <string name="phone_required_error">Phone number is required</string>
     <string name="phone_incomplete_error">Enter a complete 10-digit U.S. phone number</string>
+    <string name="dropoff_canceled_alert_title">Ice cream canceled</string>
+    <string name="dropoff_canceled_alert_message">The ice cream was cancelled.</string>
 </resources>

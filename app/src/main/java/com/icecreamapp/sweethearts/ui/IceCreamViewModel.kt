@@ -13,6 +13,8 @@ import com.icecreamapp.sweethearts.data.IceCreamMenuItem
 import com.icecreamapp.sweethearts.data.IceCreamRepository
 import com.icecreamapp.sweethearts.fcm.FcmTokenRepository
 import com.icecreamapp.sweethearts.fcm.FcmTopics
+import com.icecreamapp.sweethearts.R
+import com.icecreamapp.sweethearts.util.DropoffCancelAlertPrefs
 import com.icecreamapp.sweethearts.util.VendorNotificationPrefs
 import com.icecreamapp.sweethearts.util.decodePolyline
 import com.icecreamapp.sweethearts.util.distanceMeters
@@ -95,6 +97,11 @@ class IceCreamViewModel(
     private val _hiddenFromAdminList = MutableStateFlow<Set<String>>(emptySet())
     val hiddenFromAdminList: StateFlow<Set<String>> = _hiddenFromAdminList.asStateFlow()
 
+    private val _dropoffCanceledMessage = MutableStateFlow<String?>(null)
+    val dropoffCanceledMessage: StateFlow<String?> = _dropoffCanceledMessage.asStateFlow()
+
+    private var pendingCanceledDropoffIdForAck: String? = null
+
     companion object {
         private const val DWELL_SECONDS = 5 * 60L
         private const val TAG_DIRECTIONS = "DirectionsAPI"
@@ -109,6 +116,20 @@ class IceCreamViewModel(
                 }
                 .collect { (result, location) ->
                     _dropoffLoadError.value = result.loadError
+                    if (!dropoffRepository.isAdminSessionActive()) {
+                        val canceledMine = result.requests.firstOrNull { req ->
+                            req.isCanceledStatus() &&
+                                !DropoffCancelAlertPrefs.isCancelAlertAcknowledged(
+                                    application,
+                                    req.id,
+                                )
+                        }
+                        if (canceledMine != null && _dropoffCanceledMessage.value == null) {
+                            pendingCanceledDropoffIdForAck = canceledMine.id
+                            _dropoffCanceledMessage.value =
+                                application.getString(R.string.dropoff_canceled_alert_message)
+                        }
+                    }
                     val requestsForUi = if (dropoffRepository.isAdminSessionActive()) {
                         result.requests
                     } else {
@@ -355,6 +376,15 @@ class IceCreamViewModel(
     fun clearDropoffError() {
         _dropoffError.value = false
         _dropoffErrorMessage.value = null
+    }
+
+    /** Call when the user dismisses the cancel alert so we persist ack and hide the dialog. */
+    fun acknowledgeDropoffCanceledAlert() {
+        pendingCanceledDropoffIdForAck?.let { id ->
+            DropoffCancelAlertPrefs.acknowledgeCancelAlert(application, id)
+        }
+        pendingCanceledDropoffIdForAck = null
+        _dropoffCanceledMessage.value = null
     }
 
     /** Pull latest dropoffs immediately (e.g. app resume) so the map matches admin changes sooner than the poll interval. */
