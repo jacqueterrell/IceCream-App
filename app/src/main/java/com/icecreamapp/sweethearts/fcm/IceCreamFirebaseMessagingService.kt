@@ -11,6 +11,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.icecreamapp.sweethearts.MainActivity
 import com.icecreamapp.sweethearts.R
+import com.icecreamapp.sweethearts.util.VendorNotificationPrefs
 
 /**
  * Handles FCM token updates and incoming push notifications.
@@ -19,7 +20,10 @@ class IceCreamFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        FcmTokenRepository.registerToken(token)
+        FcmTokenRepository.registerToken(
+            token,
+            VendorNotificationPrefs.isVendorAlertsOptIn(applicationContext),
+        )
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

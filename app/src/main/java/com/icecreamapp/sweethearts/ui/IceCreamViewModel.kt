@@ -11,6 +11,9 @@ import com.icecreamapp.sweethearts.data.DropoffRequestDisplay
 import com.icecreamapp.sweethearts.data.DropoffWithEta
 import com.icecreamapp.sweethearts.data.IceCreamMenuItem
 import com.icecreamapp.sweethearts.data.IceCreamRepository
+import com.icecreamapp.sweethearts.fcm.FcmTokenRepository
+import com.icecreamapp.sweethearts.fcm.FcmTopics
+import com.icecreamapp.sweethearts.util.VendorNotificationPrefs
 import com.icecreamapp.sweethearts.util.decodePolyline
 import com.icecreamapp.sweethearts.util.distanceMeters
 import com.icecreamapp.sweethearts.util.formatDistance
@@ -21,7 +24,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import com.google.firebase.messaging.FirebaseMessaging
 
 /**
  * ViewModel for the ice cream screen (MVVM).
@@ -104,8 +109,13 @@ class IceCreamViewModel(
                 }
                 .collect { (result, location) ->
                     _dropoffLoadError.value = result.loadError
+                    val requestsForUi = if (dropoffRepository.isAdminSessionActive()) {
+                        result.requests
+                    } else {
+                        result.requests.filter { it.shouldShowOnCustomerRouteMap() }
+                    }
                     val list = withContext(Dispatchers.IO) {
-                        result.requests.map { req ->
+                        requestsForUi.map { req ->
                             val address = reverseGeocode(application, req.latitude, req.longitude)
                             val dist = location?.let { (lat, lng) ->
                                 distanceMeters(lat, lng, req.latitude, req.longitude)
@@ -328,6 +338,7 @@ class IceCreamViewModel(
             repository.requestIceCreamDropoff(name, phoneNumber, latitude, longitude)
                 .onSuccess {
                     _dropoffSuccess.value = true
+                    dropoffRepository.requestDropoffRefresh()
                 }
                 .onFailure { e ->
                     _dropoffError.value = true
@@ -344,5 +355,29 @@ class IceCreamViewModel(
     fun clearDropoffError() {
         _dropoffError.value = false
         _dropoffErrorMessage.value = null
+    }
+
+    /** Pull latest dropoffs immediately (e.g. app resume) so the map matches admin changes sooner than the poll interval. */
+    fun requestDropoffListRefresh() {
+        viewModelScope.launch {
+            dropoffRepository.requestDropoffRefresh()
+        }
+    }
+
+    /**
+     * After vendor unlocks admin once on this device: subscribe to vendor FCM topic and re-register token
+     * with [receivesVendorAlerts]. Backend must send to topic [FcmTopics.VENDOR_ALERTS] or stored tokens with that flag.
+     */
+    fun markDeviceAsVendorForPush() {
+        VendorNotificationPrefs.setVendorAlertsOptIn(application, true)
+        viewModelScope.launch {
+            runCatching {
+                FirebaseMessaging.getInstance().subscribeToTopic(FcmTopics.VENDOR_ALERTS).await()
+                val token = FirebaseMessaging.getInstance().token.await()
+                FcmTokenRepository.registerToken(token, receivesVendorAlerts = true)
+            }.onFailure { e ->
+                Log.w("IceCreamViewModel", "Vendor push setup failed", e)
+            }
+        }
     }
 }

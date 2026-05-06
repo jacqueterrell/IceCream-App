@@ -14,4 +14,10 @@
     <string name="google_maps_api_key" translatable="false">AIzaSyCudLjbCBRBgLsbvMnb5xRIuk-qN2WejO4</string>
     <string name="default_notification_channel_id">ice_cream_default</string>
     <string name="notification_channel_name">Ice Cream Notifications</string>
+    <string name="your_info_section_title">Your info</string>
+    <string name="your_info_section_subtitle">Saved on this device. We use this for each request — confirm or edit below.</string>
+    <string name="request_ice_cream">Request Ice Cream</string>
+    <string name="name_required_error">Name is required</string>
+    <string name="phone_required_error">Phone number is required</string>
+    <string name="phone_incomplete_error">Enter a complete 10-digit U.S. phone number</string>
 </resources>

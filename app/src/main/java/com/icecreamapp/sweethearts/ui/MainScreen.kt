@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.tooling.preview.Preview
@@ -78,6 +79,8 @@ import com.icecreamapp.sweethearts.data.DropoffRequestDisplay
 import com.icecreamapp.sweethearts.data.DropoffWithEta
 import com.icecreamapp.sweethearts.data.IceCreamMenuItem
 import com.icecreamapp.sweethearts.AdminConfig
+import com.icecreamapp.sweethearts.R
+import com.icecreamapp.sweethearts.util.CustomerInfoPreferences
 import com.icecreamapp.sweethearts.util.formatDistance
 import com.icecreamapp.sweethearts.ui.theme.IceCreamAppTheme
 import java.text.SimpleDateFormat
@@ -93,35 +96,79 @@ fun MainScreen(
     val loading = viewModel.loading.collectAsState().value
     val message = viewModel.message.collectAsState().value
     val snackbarHostState = remember { SnackbarHostState() }
-    var name by remember { mutableStateOf("") }
-    var phoneDigits by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val appContext = remember { context.applicationContext }
+    var name by remember { mutableStateOf(CustomerInfoPreferences.loadName(appContext)) }
+    var phoneDigits by remember { mutableStateOf(CustomerInfoPreferences.loadPhoneDigits(appContext)) }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var phoneError by remember { mutableStateOf<String?>(null) }
     var showTryAgainDialog by remember { mutableStateOf(false) }
     var tryAgainMessage by remember { mutableStateOf("Please try again.") }
     var showListScreen by remember { mutableStateOf(false) }
     var showPasscodeDialog by remember { mutableStateOf(false) }
     var passcodeInput by remember { mutableStateOf("") }
     var passcodeError by remember { mutableStateOf("") }
-    val context = LocalContext.current
     val locationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    LaunchedEffect(name, phoneDigits) {
+        CustomerInfoPreferences.save(appContext, name, phoneDigits)
+    }
+
+    fun validateCustomerFields(): Boolean {
+        val trimmedName = name.trim()
+        nameError = if (trimmedName.isBlank()) {
+            context.getString(R.string.name_required_error)
+        } else {
+            null
+        }
+        phoneError = when {
+            phoneDigits.isEmpty() -> context.getString(R.string.phone_required_error)
+            phoneDigits.length != 10 -> context.getString(R.string.phone_incomplete_error)
+            else -> null
+        }
+        return nameError == null && phoneError == null
+    }
+
+    fun phoneDigitsToFormatted(): String =
+        if (phoneDigits.length == 10) {
+            "${phoneDigits.take(3)}-${phoneDigits.drop(3).take(3)}-${phoneDigits.drop(6)}"
+        } else {
+            phoneDigits
+        }
+
+    fun requestDropoffWithLocation() {
+        val trimmedName = name.trim()
+        CustomerInfoPreferences.save(appContext, trimmedName, phoneDigits)
+        val phoneFormatted = phoneDigitsToFormatted()
+        locationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                viewModel.requestDropoff(trimmedName, phoneFormatted, location.latitude, location.longitude)
+            } else {
+                tryAgainMessage = "Location unavailable. Turn on device location and try again."
+                showTryAgainDialog = true
+            }
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            locationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    val phoneFormatted = if (phoneDigits.length == 10)
-                        "${phoneDigits.take(3)}-${phoneDigits.drop(3).take(3)}-${phoneDigits.drop(6)}"
-                    else phoneDigits
-                    viewModel.requestDropoff(name, phoneFormatted, location.latitude, location.longitude)
-                } else {
-                    tryAgainMessage = "Location unavailable. Turn on device location and try again."
-                    showTryAgainDialog = true
-                }
-            }
-        } else {
+    ) onPermissionResult@{ granted ->
+        if (!granted) {
             tryAgainMessage = "Location permission is needed to submit a dropoff request."
             showTryAgainDialog = true
+            return@onPermissionResult
+        }
+        if (!validateCustomerFields()) return@onPermissionResult
+        val trimmedName = name.trim()
+        CustomerInfoPreferences.save(appContext, trimmedName, phoneDigits)
+        val phoneFormatted = phoneDigitsToFormatted()
+        locationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                viewModel.requestDropoff(trimmedName, phoneFormatted, location.latitude, location.longitude)
+            } else {
+                tryAgainMessage = "Location unavailable. Turn on device location and try again."
+                showTryAgainDialog = true
+            }
         }
     }
 
@@ -157,6 +204,17 @@ fun MainScreen(
             snackbarHostState.showSnackbar(msg)
             viewModel.clearMessage()
         }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.requestDropoffListRefresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -208,53 +266,83 @@ fun MainScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     ) {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                OutlinedTextField(
-                                    value = name,
-                                    onValueChange = { name = it },
-                                    label = { Text("Name") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                                )
-                                OutlinedTextField(
-                                    value = phoneDigits,
-                                    onValueChange = { new ->
-                                        phoneDigits = new.filter { it.isDigit() }.take(10)
-                                    },
-                                    label = { Text("Phone Number") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                                    visualTransformation = PhoneNumberVisualTransformation(),
-                                )
-                                Button(
-                                    onClick = {
-                                        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                                            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                                        if (hasPermission) {
-                                            locationClient.lastLocation.addOnSuccessListener { location ->
-                                                if (location != null) {
-                                                    val phoneFormatted = if (phoneDigits.length == 10)
-                                                        "${phoneDigits.take(3)}-${phoneDigits.drop(3).take(3)}-${phoneDigits.drop(6)}"
-                                                    else phoneDigits
-                                                    viewModel.requestDropoff(name, phoneFormatted, location.latitude, location.longitude)
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                ),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.your_info_section_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.your_info_section_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    OutlinedTextField(
+                                        value = name,
+                                        onValueChange = {
+                                            name = it
+                                            nameError = null
+                                        },
+                                        label = { Text("Name") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        isError = nameError != null,
+                                        supportingText = nameError?.let { err ->
+                                            { Text(err, color = MaterialTheme.colorScheme.error) }
+                                        },
+                                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                                    )
+                                    OutlinedTextField(
+                                        value = phoneDigits,
+                                        onValueChange = { new ->
+                                            phoneDigits = new.filter { it.isDigit() }.take(10)
+                                            phoneError = null
+                                        },
+                                        label = { Text("Phone number") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        isError = phoneError != null,
+                                        supportingText = phoneError?.let { err ->
+                                            { Text(err, color = MaterialTheme.colorScheme.error) }
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                        visualTransformation = PhoneNumberVisualTransformation(),
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (validateCustomerFields()) {
+                                                val hasPermission =
+                                                    Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                                                        ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        ) == PackageManager.PERMISSION_GRANTED
+                                                if (hasPermission) {
+                                                    requestDropoffWithLocation()
                                                 } else {
-                                                    tryAgainMessage = "Location unavailable. Turn on device location and try again."
-                                                    showTryAgainDialog = true
+                                                    locationPermissionLauncher.launch(
+                                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    )
                                                 }
                                             }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = !dropoffLoading,
+                                    ) {
+                                        if (dropoffLoading) {
+                                            CircularProgressIndicator(modifier = Modifier.padding(8.dp))
                                         } else {
-                                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                            Text(stringResource(R.string.request_ice_cream))
                                         }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    enabled = !dropoffLoading,
-                                ) {
-                                    if (dropoffLoading) {
-                                        CircularProgressIndicator(modifier = Modifier.padding(8.dp))
-                                    } else {
-                                        Text("Request Ice Cream Dropoff")
                                     }
                                 }
                             }
@@ -344,6 +432,7 @@ fun MainScreen(
                 Button(
                     onClick = {
                         if (passcodeInput == AdminConfig.PASSCODE) {
+                            viewModel.markDeviceAsVendorForPush()
                             viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
                             showListScreen = true
                             showPasscodeDialog = false

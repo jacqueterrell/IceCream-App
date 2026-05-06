@@ -1,5 +1,7 @@
 package com.icecreamapp.sweethearts.data
 
+import java.util.Locale
+
 /**
  * Ice cream dropoff request from Firestore.
  * status is null for pending; "Approved" or "Canceled" when done.
@@ -11,7 +13,27 @@ data class DropoffRequest(
     val latitude: Double,
     val longitude: Double,
     val status: String? = null,
-)
+) {
+    /**
+     * Whether this request should appear on the shared customer map and route list.
+     * Admin-resolved or finished requests stay in Firestore for history but are hidden here.
+     */
+    fun shouldShowOnCustomerRouteMap(): Boolean {
+        val s = status?.trim()?.lowercase(Locale.ROOT) ?: return true
+        if (s.isEmpty()) return true
+        return s !in TerminalStatuses
+    }
+
+    companion object {
+        private val TerminalStatuses = setOf(
+            "approved",
+            "canceled",
+            "cancelled",
+            "done",
+            "completed",
+        )
+    }
+}
 
 /**
  * Dropoff request with address and distance for display.

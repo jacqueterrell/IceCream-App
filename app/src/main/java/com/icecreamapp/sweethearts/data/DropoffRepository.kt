@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.channels.BufferOverflow
 
 /** Result of loading dropoff requests: either data or a load error message. */
 data class DropoffRequestsResult(
@@ -17,10 +18,15 @@ data class DropoffRequestsResult(
     val loadError: String? = null,
 )
 
-private const val POLL_INTERVAL_MS = 5000L
+/** Public map/list stay closer to admin actions without changing the backend. */
+private const val POLL_INTERVAL_MS = 2500L
 
 /** Use this to request an immediate refetch so map/list update when admin changes status. */
-private val refreshTrigger = MutableSharedFlow<Unit>(replay = 0)
+private val refreshTrigger = MutableSharedFlow<Unit>(
+    replay = 0,
+    extraBufferCapacity = 16,
+    onBufferOverflow = BufferOverflow.SUSPEND,
+)
 
 class DropoffRepository {
 
@@ -31,6 +37,9 @@ class DropoffRepository {
     fun setAdminSessionPasscode(passcode: String?) {
         adminSessionPasscode = passcode
     }
+
+    /** When true, [fetchDropoffRequests] uses admin auth; full list is shown for the admin UI. */
+    fun isAdminSessionActive(): Boolean = adminSessionPasscode != null
 
     private fun withAdminParams(base: Map<String, Any>): Map<String, Any> {
         val c = adminSessionPasscode

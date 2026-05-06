@@ -6,6 +6,9 @@ import com.google.firebase.ktx.Firebase
 
 /**
  * Sends the device FCM token to Firebase (Firestore via callable) once push is permitted.
+ * [receivesVendorAlerts] must be true for devices that should get new-request alerts; the
+ * backend should either target FCM topic [FcmTopics.VENDOR_ALERTS] or query stored tokens
+ * with this flag.
  */
 object FcmTokenRepository {
 
@@ -15,10 +18,11 @@ object FcmTokenRepository {
     /**
      * Register the current FCM token with the backend. Call when permission is granted or token refreshes.
      */
-    fun registerToken(token: String) {
-        val data = hashMapOf(
+    fun registerToken(token: String, receivesVendorAlerts: Boolean = false) {
+        val data = hashMapOf<String, Any>(
             "fcmToken" to token,
             "platform" to "android",
+            "receivesVendorAlerts" to receivesVendorAlerts,
         )
         functions.getHttpsCallable("registerDeviceToken").call(data)
             .addOnFailureListener {

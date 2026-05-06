@@ -20,10 +20,12 @@ import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.icecreamapp.sweethearts.fcm.FcmTokenRepository
+import com.icecreamapp.sweethearts.fcm.FcmTopics
 import com.icecreamapp.sweethearts.ui.MainScreen
 import com.icecreamapp.sweethearts.ui.IceCreamViewModel
 import com.icecreamapp.sweethearts.ui.IceCreamViewModelFactory
 import com.icecreamapp.sweethearts.ui.theme.IceCreamAppTheme
+import com.icecreamapp.sweethearts.util.VendorNotificationPrefs
 
 class MainActivity : ComponentActivity() {
 
@@ -83,12 +85,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getFcmToken() {
+        val appCtx = applicationContext
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (task.isSuccessful) {
-                task.result?.let { token -> FcmTokenRepository.registerToken(token) }
+                task.result?.let { token ->
+                    FcmTokenRepository.registerToken(
+                        token,
+                        VendorNotificationPrefs.isVendorAlertsOptIn(appCtx),
+                    )
+                }
             }
         }
         // Subscribe to "all-users" so curl with "topic": "all-users" delivers to this device.
-        FirebaseMessaging.getInstance().subscribeToTopic("all-users")
+        FirebaseMessaging.getInstance().subscribeToTopic(FcmTopics.ALL_USERS)
+        if (VendorNotificationPrefs.isVendorAlertsOptIn(appCtx)) {
+            FirebaseMessaging.getInstance().subscribeToTopic(FcmTopics.VENDOR_ALERTS)
+        }
     }
 }
