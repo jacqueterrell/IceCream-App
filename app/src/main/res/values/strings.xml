@@ -22,4 +22,8 @@
     <string name="phone_incomplete_error">Enter a complete 10-digit U.S. phone number</string>
     <string name="dropoff_canceled_alert_title">Ice cream canceled</string>
     <string name="dropoff_canceled_alert_message">The ice cream was cancelled.</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="admin_logout_confirm_title">Leave Admin mode?</string>
+    <string name="admin_logout_confirm_message">You will be logged out of Admin mode.</string>
 </resources>

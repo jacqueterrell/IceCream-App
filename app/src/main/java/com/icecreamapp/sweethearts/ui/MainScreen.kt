@@ -37,6 +37,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -80,6 +81,7 @@ import com.icecreamapp.sweethearts.data.DropoffWithEta
 import com.icecreamapp.sweethearts.data.IceCreamMenuItem
 import com.icecreamapp.sweethearts.AdminConfig
 import com.icecreamapp.sweethearts.R
+import com.icecreamapp.sweethearts.util.AdminSessionPrefs
 import com.icecreamapp.sweethearts.util.CustomerInfoPreferences
 import com.icecreamapp.sweethearts.util.formatDistance
 import com.icecreamapp.sweethearts.ui.theme.IceCreamAppTheme
@@ -105,6 +107,7 @@ fun MainScreen(
     var showTryAgainDialog by remember { mutableStateOf(false) }
     var tryAgainMessage by remember { mutableStateOf("Please try again.") }
     var showListScreen by remember { mutableStateOf(false) }
+    var showAdminLogoutConfirm by remember { mutableStateOf(false) }
     var showPasscodeDialog by remember { mutableStateOf(false) }
     var passcodeInput by remember { mutableStateOf("") }
     var passcodeError by remember { mutableStateOf("") }
@@ -185,6 +188,11 @@ fun MainScreen(
     val routeError by viewModel.routeError.collectAsState()
 
     LaunchedEffect(Unit) {
+        if (AdminSessionPrefs.isPersistedAdminSession(appContext)) {
+            viewModel.markDeviceAsVendorForPush()
+            viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
+            showListScreen = true
+        }
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             locationClient.lastLocation.addOnSuccessListener { loc ->
                 loc?.let { viewModel.updateCurrentLocation(it.latitude, it.longitude) }
@@ -218,19 +226,25 @@ fun MainScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    /** Clears persisted admin preference and callable passcode session. */
+    val leaveAdminList: () -> Unit = {
+        AdminSessionPrefs.setPersistedAdminSession(appContext, false)
+        viewModel.setAdminSessionPasscode(null)
+        viewModel.clearHiddenFromAdminList()
+        showListScreen = false
+    }
+    val requestLeaveAdminConfirm: () -> Unit = {
+        showAdminLogoutConfirm = true
+    }
+
     Scaffold(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        val leaveAdminList: () -> Unit = {
-            viewModel.setAdminSessionPasscode(null)
-            viewModel.clearHiddenFromAdminList()
-            showListScreen = false
+        // System back: confirm before clearing admin session (passcode polling).
+        BackHandler(enabled = showListScreen && !showAdminLogoutConfirm) {
+            requestLeaveAdminConfirm()
         }
-        // System back from admin list must also clear the server "admin" session,
-        // or every poll will keep calling getDropoffRequests with the passcode
-        // and the main map will show everyone's dropoffs.
-        BackHandler(enabled = showListScreen) { leaveAdminList() }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -250,7 +264,7 @@ fun MainScreen(
                         dropoffDisplays = pendingOnly,
                         dropoffLoadError = dropoffLoadError,
                         viewModel = viewModel,
-                        onBack = leaveAdminList,
+                        onBack = requestLeaveAdminConfirm,
                     )
                 }
                 loading && menu.isEmpty() -> {
@@ -385,6 +399,28 @@ fun MainScreen(
         }
     }
 
+    if (showAdminLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showAdminLogoutConfirm = false },
+            title = { Text(stringResource(R.string.admin_logout_confirm_title)) },
+            text = { Text(stringResource(R.string.admin_logout_confirm_message)) },
+            dismissButton = {
+                TextButton(onClick = { showAdminLogoutConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAdminLogoutConfirm = false
+                        leaveAdminList()
+                    },
+                ) {
+                    Text(stringResource(R.string.ok))
+                }
+            },
+        )
+    }
     if (dropoffCanceledMessage != null) {
         AlertDialog(
             onDismissRequest = viewModel::acknowledgeDropoffCanceledAlert,
@@ -445,6 +481,7 @@ fun MainScreen(
                 Button(
                     onClick = {
                         if (passcodeInput == AdminConfig.PASSCODE) {
+                            AdminSessionPrefs.setPersistedAdminSession(appContext, true)
                             viewModel.markDeviceAsVendorForPush()
                             viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
                             showListScreen = true
