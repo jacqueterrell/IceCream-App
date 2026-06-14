@@ -7,175 +7,521 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.Lifecycle.State
-import android.os.Bundle
-import androidx.activity.compose.BackHandler
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.MapView
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.gms.maps.model.PolylineOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.PolylineOptions
+import com.icecreamapp.sweethearts.AdminConfig
 import com.icecreamapp.sweethearts.data.DropoffRequestDisplay
 import com.icecreamapp.sweethearts.data.DropoffWithEta
 import com.icecreamapp.sweethearts.data.IceCreamMenuItem
-import com.icecreamapp.sweethearts.AdminConfig
-import com.icecreamapp.sweethearts.R
-import com.icecreamapp.sweethearts.util.AdminSessionPrefs
-import com.icecreamapp.sweethearts.util.CustomerInfoPreferences
+import com.icecreamapp.sweethearts.ui.theme.*
 import com.icecreamapp.sweethearts.util.formatDistance
-import com.icecreamapp.sweethearts.ui.theme.IceCreamAppTheme
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: IceCreamViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val menu = viewModel.menu.collectAsState().value
-    val loading = viewModel.loading.collectAsState().value
-    val message = viewModel.message.collectAsState().value
+    val currentScreen by viewModel.currentScreen.collectAsState()
+    val userName by viewModel.userName.collectAsState()
+    val userPhone by viewModel.userPhone.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
-    val appContext = remember { context.applicationContext }
-    var name by remember { mutableStateOf(CustomerInfoPreferences.loadName(appContext)) }
-    var phoneDigits by remember { mutableStateOf(CustomerInfoPreferences.loadPhoneDigits(appContext)) }
-    var nameError by remember { mutableStateOf<String?>(null) }
-    var phoneError by remember { mutableStateOf<String?>(null) }
+    val message by viewModel.message.collectAsState()
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = CreamBackground
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Crossfade(targetState = currentScreen, label = "ScreenTransition") { screen ->
+                when (screen) {
+                    IceCreamScreen.WELCOME -> WelcomeScreen(
+                        onGetStarted = { viewModel.setScreen(IceCreamScreen.SAVE_INFO) },
+                        onVendorAccess = { viewModel.setScreen(IceCreamScreen.VENDOR_ACCESS) }
+                    )
+                    IceCreamScreen.SAVE_INFO -> SaveInfoScreen(
+                        onBack = { viewModel.setScreen(IceCreamScreen.WELCOME) },
+                        onContinue = { name, phone -> viewModel.saveProfile(name, phone) }
+                    )
+                    IceCreamScreen.CUSTOMER_DASHBOARD -> CustomerDashboard(
+                        viewModel = viewModel,
+                        name = userName,
+                        phone = userPhone
+                    )
+                    IceCreamScreen.VENDOR_ACCESS -> VendorAccessScreen(
+                        onBack = { viewModel.setScreen(IceCreamScreen.WELCOME) },
+                        onAccess = { passcode ->
+                            if (passcode == AdminConfig.PASSCODE) {
+                                viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
+                                viewModel.markDeviceAsVendorForPush()
+                                viewModel.setScreen(IceCreamScreen.VENDOR_DASHBOARD)
+                            }
+                        }
+                    )
+                    IceCreamScreen.VENDOR_DASHBOARD -> VendorDashboard(
+                        viewModel = viewModel,
+                        onBack = {
+                            viewModel.setAdminSessionPasscode(null)
+                            viewModel.setScreen(IceCreamScreen.WELCOME)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SweetheartsLogo(
+    modifier: Modifier = Modifier,
+    onHoldComplete: (() -> Unit)? = null
+) {
+    var isPressing by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(isPressing) {
+        if (isPressing && onHoldComplete != null) {
+            delay(3000L)
+            onHoldComplete()
+            isPressing = false
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .pointerInput(onHoldComplete) {
+                detectTapGestures(
+                    onPress = {
+                        isPressing = true
+                        try {
+                            awaitRelease()
+                        } finally {
+                            isPressing = false
+                        }
+                    }
+                )
+            }
+    ) {
+        Text("🍦", style = MaterialTheme.typography.displaySmall)
+        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.padding(start = 12.dp)) {
+            Text(
+                "Sweethearts",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = ChocolateBrown
+            )
+            Text(
+                "ICE CREAM",
+                style = MaterialTheme.typography.labelLarge,
+                color = ChocolateBrown.copy(alpha = 0.7f),
+                letterSpacing = 2.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun WelcomeScreen(
+    onGetStarted: () -> Unit,
+    onVendorAccess: () -> Unit
+) {
+    Scaffold(containerColor = CreamBackground) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            SweetheartsLogo(
+                onHoldComplete = onVendorAccess
+            )
+
+            // Large Truck Illustration Placeholder
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "🚚🍦",
+                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp)
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "Welcome to\nSweethearts Ice Cream",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = ChocolateBrown,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Fresh treats delivered by your\nlocal ice cream truck ❤️",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TextBrown.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 48.dp)
+            ) {
+                Button(
+                    onClick = onGetStarted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
+                    shape = RoundedCornerShape(32.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ChocolateBrown)
+                ) {
+                    Text("Let's Get Started", style = MaterialTheme.typography.titleMedium)
+                }
+                
+                TextButton(onClick = onVendorAccess) {
+                    Text(
+                        "Vendor Access",
+                        color = StrawberryPink,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SaveInfoScreen(
+    onBack: () -> Unit,
+    onContinue: (String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+
+    Scaffold(
+        containerColor = CreamBackground,
+        topBar = {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Back", modifier = Modifier.padding(4.dp)) 
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            SweetheartsLogo()
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            Text(
+                "Let's save your info",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = ChocolateBrown
+            )
+            Text(
+                "so we can serve you faster! ❤️",
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextBrown.copy(alpha = 0.8f)
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+
+            Text("What's your name?", style = MaterialTheme.typography.labelLarge, color = TextBrown)
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Enter your name") },
+                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = StrawberryPink) },
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = StrawberryPink,
+                    unfocusedBorderColor = Color.LightGray
+                )
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("Phone number", style = MaterialTheme.typography.labelLarge, color = TextBrown)
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it.filter { c -> c.isDigit() }.take(10) },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("(770) 555-1234") },
+                leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = StrawberryPink) },
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = StrawberryPink,
+                    unfocusedBorderColor = Color.LightGray
+                )
+            )
+            
+            Text(
+                "We use this to notify you when the truck is on the way!",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Button(
+                onClick = { if (name.isNotBlank() && phone.length == 10) onContinue(name, phone) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                shape = RoundedCornerShape(32.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ChocolateBrown),
+                enabled = name.isNotBlank() && phone.length == 10
+            ) {
+                Text("Continue", style = MaterialTheme.typography.titleMedium)
+            }
+
+            Card(
+                modifier = Modifier
+                    .padding(vertical = 32.dp)
+                    .fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = SoftStrawberry),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🍓", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Already saved?", fontWeight = FontWeight.Bold, color = TextBrown)
+                        Text("We'll remember you next time.", style = MaterialTheme.typography.bodySmall, color = TextBrown)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VendorAccessScreen(
+    onBack: () -> Unit,
+    onAccess: (String) -> Unit
+) {
+    var code by remember { mutableStateOf("") }
+
+    Scaffold(
+        containerColor = CreamBackground,
+        topBar = {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(SoftStrawberry, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock, 
+                    contentDescription = null,
+                    tint = StrawberryPink,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Text(
+                "Vendor Access",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = ChocolateBrown
+            )
+            Text(
+                "Enter your vendor code\nto continue",
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextBrown.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+
+            // Code Inputs
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                repeat(5) { index ->
+                    val char = code.getOrNull(index)?.toString() ?: ""
+                    Card(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .aspectRatio(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = if (code.length == index) BorderStroke(2.dp, StrawberryPink) else null,
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = if (char.isNotEmpty()) "●" else "",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = ChocolateBrown
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // Hidden text field to capture input
+            OutlinedTextField(
+                value = code,
+                onValueChange = { if (it.length <= 5) code = it },
+                modifier = Modifier.size(1.dp).padding(0.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent
+                )
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            Button(
+                onClick = { onAccess(code) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                shape = RoundedCornerShape(32.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ChocolateBrown),
+                enabled = code.length >= 4
+            ) {
+                Text("Access Dashboard", style = MaterialTheme.typography.titleMedium)
+            }
+            
+            TextButton(onClick = onBack) {
+                Text("Back", color = Color.Gray)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomerDashboard(
+    viewModel: IceCreamViewModel,
+    name: String,
+    phone: String
+) {
+    var showEditProfileDialog by remember { mutableStateOf(false) }
     var showTryAgainDialog by remember { mutableStateOf(false) }
     var tryAgainMessage by remember { mutableStateOf("Please try again.") }
-    var showListScreen by remember { mutableStateOf(false) }
-    var showAdminLogoutConfirm by remember { mutableStateOf(false) }
-    var showPasscodeDialog by remember { mutableStateOf(false) }
-    var passcodeInput by remember { mutableStateOf("") }
-    var passcodeError by remember { mutableStateOf("") }
+    
+    val context = LocalContext.current
     val locationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-
-    LaunchedEffect(name, phoneDigits) {
-        CustomerInfoPreferences.save(appContext, name, phoneDigits)
-    }
-
-    fun validateCustomerFields(): Boolean {
-        val trimmedName = name.trim()
-        nameError = if (trimmedName.isBlank()) {
-            context.getString(R.string.name_required_error)
-        } else {
-            null
-        }
-        phoneError = when {
-            phoneDigits.isEmpty() -> context.getString(R.string.phone_required_error)
-            phoneDigits.length != 10 -> context.getString(R.string.phone_incomplete_error)
-            else -> null
-        }
-        return nameError == null && phoneError == null
-    }
-
-    fun phoneDigitsToFormatted(): String =
-        if (phoneDigits.length == 10) {
-            "${phoneDigits.take(3)}-${phoneDigits.drop(3).take(3)}-${phoneDigits.drop(6)}"
-        } else {
-            phoneDigits
-        }
-
-    fun requestDropoffWithLocation() {
-        val trimmedName = name.trim()
-        CustomerInfoPreferences.save(appContext, trimmedName, phoneDigits)
-        val phoneFormatted = phoneDigitsToFormatted()
-        locationClient.lastLocation.addOnSuccessListener { location ->
-            if (location != null) {
-                viewModel.requestDropoff(trimmedName, phoneFormatted, location.latitude, location.longitude)
-            } else {
-                tryAgainMessage = "Location unavailable. Turn on device location and try again."
-                showTryAgainDialog = true
-            }
-        }
-    }
-
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-    ) onPermissionResult@{ granted ->
-        if (!granted) {
+    ) { granted ->
+        if (granted) {
+            locationClient.lastLocation.addOnSuccessListener { location ->
+                if (location != null) {
+                    viewModel.requestDropoff(name, phone, location.latitude, location.longitude)
+                } else {
+                    tryAgainMessage = "Location unavailable. Turn on device location and try again."
+                    showTryAgainDialog = true
+                }
+            }
+        } else {
             tryAgainMessage = "Location permission is needed to submit a dropoff request."
             showTryAgainDialog = true
-            return@onPermissionResult
-        }
-        if (!validateCustomerFields()) return@onPermissionResult
-        val trimmedName = name.trim()
-        CustomerInfoPreferences.save(appContext, trimmedName, phoneDigits)
-        val phoneFormatted = phoneDigitsToFormatted()
-        locationClient.lastLocation.addOnSuccessListener { location ->
-            if (location != null) {
-                viewModel.requestDropoff(trimmedName, phoneFormatted, location.latitude, location.longitude)
-            } else {
-                tryAgainMessage = "Location unavailable. Turn on device location and try again."
-                showTryAgainDialog = true
-            }
         }
     }
 
-    val dropoffCanceledMessage by viewModel.dropoffCanceledMessage.collectAsState()
     val dropoffSuccess by viewModel.dropoffSuccess.collectAsState()
     val dropoffError by viewModel.dropoffError.collectAsState()
     val dropoffErrorMessage by viewModel.dropoffErrorMessage.collectAsState()
@@ -188,11 +534,6 @@ fun MainScreen(
     val routeError by viewModel.routeError.collectAsState()
 
     LaunchedEffect(Unit) {
-        if (AdminSessionPrefs.isPersistedAdminSession(appContext)) {
-            viewModel.markDeviceAsVendorForPush()
-            viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
-            showListScreen = true
-        }
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             locationClient.lastLocation.addOnSuccessListener { loc ->
                 loc?.let { viewModel.updateCurrentLocation(it.latitude, it.longitude) }
@@ -208,231 +549,146 @@ fun MainScreen(
         }
     }
 
-    LaunchedEffect(message) {
-        message?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
-            viewModel.clearMessage()
-        }
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.requestDropoffListRefresh()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    /** Clears persisted admin preference and callable passcode session. */
-    val leaveAdminList: () -> Unit = {
-        AdminSessionPrefs.setPersistedAdminSession(appContext, false)
-        viewModel.setAdminSessionPasscode(null)
-        viewModel.clearHiddenFromAdminList()
-        showListScreen = false
-    }
-    val requestLeaveAdminConfirm: () -> Unit = {
-        showAdminLogoutConfirm = true
-    }
-
     Scaffold(
-        modifier = modifier,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        // System back: confirm before clearing admin session (passcode polling).
-        BackHandler(enabled = showListScreen && !showAdminLogoutConfirm) {
-            requestLeaveAdminConfirm()
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .twoFingerLongPress(durationMs = 2000L) { showPasscodeDialog = true },
-        ) {
-            when {
-                showListScreen -> {
-                    val dropoffLoadError by viewModel.dropoffLoadError.collectAsState()
-                    val hiddenIds by viewModel.hiddenFromAdminList.collectAsState()
-                    val pendingOnly = dropoffDisplays.filter { display ->
-                        display.request.id !in hiddenIds &&
-                            display.request.status != "Approved" &&
-                            display.request.status != "Canceled"
-                    }
-                    DropoffListScreen(
-                        dropoffDisplays = pendingOnly,
-                        dropoffLoadError = dropoffLoadError,
-                        viewModel = viewModel,
-                        onBack = requestLeaveAdminConfirm,
-                    )
-                }
-                loading && menu.isEmpty() -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .twoFingerLongPress(durationMs = 2000L) { showPasscodeDialog = true },
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                    ) {
-                        item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                ),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.your_info_section_title),
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.your_info_section_subtitle),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    OutlinedTextField(
-                                        value = name,
-                                        onValueChange = {
-                                            name = it
-                                            nameError = null
-                                        },
-                                        label = { Text("Name") },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        isError = nameError != null,
-                                        supportingText = nameError?.let { err ->
-                                            { Text(err, color = MaterialTheme.colorScheme.error) }
-                                        },
-                                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                                    )
-                                    OutlinedTextField(
-                                        value = phoneDigits,
-                                        onValueChange = { new ->
-                                            phoneDigits = new.filter { it.isDigit() }.take(10)
-                                            phoneError = null
-                                        },
-                                        label = { Text("Phone number") },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        isError = phoneError != null,
-                                        supportingText = phoneError?.let { err ->
-                                            { Text(err, color = MaterialTheme.colorScheme.error) }
-                                        },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                                        visualTransformation = PhoneNumberVisualTransformation(),
-                                    )
-                                    Button(
-                                        onClick = {
-                                            if (validateCustomerFields()) {
-                                                val hasPermission =
-                                                    Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                                                        ContextCompat.checkSelfPermission(
-                                                            context,
-                                                            Manifest.permission.ACCESS_FINE_LOCATION,
-                                                        ) == PackageManager.PERMISSION_GRANTED
-                                                if (hasPermission) {
-                                                    requestDropoffWithLocation()
-                                                } else {
-                                                    locationPermissionLauncher.launch(
-                                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                                    )
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = !dropoffLoading,
-                                    ) {
-                                        if (dropoffLoading) {
-                                            CircularProgressIndicator(modifier = Modifier.padding(8.dp))
-                                        } else {
-                                            Text(stringResource(R.string.request_ice_cream))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        item(key = "route_map") {
-                            val displayList = if (optimizedDropoffsWithEta.isNotEmpty()) {
-                                optimizedDropoffsWithEta
-                            } else {
-                                dropoffDisplays.map { d ->
-                                    DropoffWithEta(display = d, etaSecondsFromNow = -1L)
-                                }
-                            }
-                            RouteMapAndListSection(
-                                currentLocation = currentLocation,
-                                dropoffDisplays = dropoffDisplays,
-                                displayList = displayList,
-                                routePolyline = routePolyline,
-                                routeLoading = routeLoading,
-                                routeError = routeError,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { 
+                    SweetheartsLogo(
+                        onHoldComplete = { viewModel.setScreen(IceCreamScreen.VENDOR_ACCESS) }
+                    ) 
+                },
+                actions = {
+                    IconButton(onClick = { /* Notification action */ }) {
+                        BadgedBox(badge = { Badge { Text("2") } }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Notifications,
+                                contentDescription = "Notifications",
+                                tint = StrawberryPink
                             )
                         }
-                        items(
-                            if (optimizedDropoffsWithEta.isNotEmpty()) optimizedDropoffsWithEta
-                            else dropoffDisplays.map { d -> DropoffWithEta(display = d, etaSecondsFromNow = -1L) },
-                            key = { it.display.request.id }
-                        ) { dropoffWithEta ->
-                            DropoffEtaRow(dropoffWithEta = dropoffWithEta)
-                        }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CreamBackground)
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = Color.White) {
+                NavigationBarItem(
+                    selected = true,
+                    onClick = {},
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                    label = { Text("Home") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = StrawberryPink,
+                        selectedTextColor = StrawberryPink,
+                        indicatorColor = SoftStrawberry
+                    )
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {},
+                    icon = { Icon(Icons.Default.List, contentDescription = "My Requests") },
+                    label = { Text("My Requests") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {},
+                    icon = { Icon(Icons.Default.Menu, contentDescription = "Menu") },
+                    label = { Text("Menu") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {},
+                    icon = { Icon(Icons.Default.Person, contentDescription = "More") },
+                    label = { Text("More") }
+                )
             }
-            if (loading && menu.isNotEmpty()) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(24.dp),
+        },
+        containerColor = CreamBackground
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(16.dp),
+        ) {
+            item {
+                WelcomeCard(
+                    name = name,
+                    phoneNumber = phone,
+                    onEdit = { showEditProfileDialog = true }
+                )
+            }
+
+            item {
+                TruckStatusCard(
+                    status = "Available Now",
+                    etaMinutes = 12
+                )
+            }
+
+            item {
+                MapSection(
+                    currentLocation = currentLocation,
+                    dropoffDisplays = dropoffDisplays,
+                    routePolyline = routePolyline,
+                    routeLoading = routeLoading,
+                    routeError = routeError
+                )
+            }
+
+            item {
+                RequestStopButton(
+                    onClick = {
+                        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                        if (hasPermission) {
+                            locationClient.lastLocation.addOnSuccessListener { location ->
+                                if (location != null) {
+                                    viewModel.requestDropoff(name, phone, location.latitude, location.longitude)
+                                } else {
+                                    tryAgainMessage = "Location unavailable. Turn on device location and try again."
+                                    showTryAgainDialog = true
+                                }
+                            }
+                        } else {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    },
+                    isLoading = dropoffLoading
+                )
+            }
+
+            item {
+                UpcomingRouteSection(
+                    name = name,
+                    optimizedDropoffsWithEta = optimizedDropoffsWithEta,
+                    dropoffDisplays = dropoffDisplays
                 )
             }
         }
     }
 
-    if (showAdminLogoutConfirm) {
+    if (showEditProfileDialog) {
         AlertDialog(
-            onDismissRequest = { showAdminLogoutConfirm = false },
-            title = { Text(stringResource(R.string.admin_logout_confirm_title)) },
-            text = { Text(stringResource(R.string.admin_logout_confirm_message)) },
-            dismissButton = {
-                TextButton(onClick = { showAdminLogoutConfirm = false }) {
-                    Text(stringResource(R.string.cancel))
+            onDismissRequest = { showEditProfileDialog = false },
+            title = { Text("Edit Profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { /* name update logic */ },
+                        label = { Text("Name") }
+                    )
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showAdminLogoutConfirm = false
-                        leaveAdminList()
-                    },
-                ) {
-                    Text(stringResource(R.string.ok))
-                }
-            },
+                Button(onClick = { showEditProfileDialog = false }) { Text("Save") }
+            }
         )
     }
-    if (dropoffCanceledMessage != null) {
-        AlertDialog(
-            onDismissRequest = viewModel::acknowledgeDropoffCanceledAlert,
-            title = { Text(stringResource(R.string.dropoff_canceled_alert_title)) },
-            text = { Text(dropoffCanceledMessage!!) },
-            confirmButton = {
-                Button(onClick = viewModel::acknowledgeDropoffCanceledAlert) {
-                    Text("OK")
-                }
-            },
-        )
-    }
+
     if (dropoffSuccess) {
         AlertDialog(
             onDismissRequest = viewModel::clearDropoffSuccess,
@@ -443,6 +699,7 @@ fun MainScreen(
             },
         )
     }
+
     if (showTryAgainDialog) {
         AlertDialog(
             onDismissRequest = { showTryAgainDialog = false },
@@ -453,50 +710,648 @@ fun MainScreen(
             },
         )
     }
-    if (showPasscodeDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                showPasscodeDialog = false
-                passcodeInput = ""
-                passcodeError = ""
-            },
-            title = { Text("Enter passcode") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = passcodeInput,
-                        onValueChange = {
-                            passcodeInput = it
-                            passcodeError = ""
-                        },
-                        label = { Text("Passcode") },
-                        singleLine = true,
-                        isError = passcodeError.isNotEmpty(),
-                        supportingText = { if (passcodeError.isNotEmpty()) Text(passcodeError) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VendorDashboard(
+    viewModel: IceCreamViewModel,
+    onBack: () -> Unit
+) {
+    val dropoffDisplays by viewModel.dropoffDisplays.collectAsState()
+    val adminDropoffsWithEta by viewModel.adminDropoffsWithEta.collectAsState()
+    val adminRoutePolyline by viewModel.adminRoutePolyline.collectAsState()
+    val adminRouteLoading by viewModel.adminRouteLoading.collectAsState()
+    val currentLocation by viewModel.currentLocation.collectAsState()
+    val context = LocalContext.current
+
+    val stopsAhead = adminDropoffsWithEta.size
+    val nextStop = adminDropoffsWithEta.firstOrNull()
+    val nextStopName = nextStop?.display?.address?.split(",")?.firstOrNull() ?: nextStop?.display?.request?.name ?: "None"
+    val nextStopEta = if (nextStop != null && nextStop.etaSecondsFromNow >= 0) "${nextStop.etaSecondsFromNow / 60} min" else "--"
+
+    LaunchedEffect(dropoffDisplays, currentLocation) {
+        viewModel.loadAdminRoute(dropoffDisplays)
+    }
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { 
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        SweetheartsLogo()
+                        Text("Vendor Dashboard", style = MaterialTheme.typography.labelSmall, color = StrawberryPink)
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Exit Admin", modifier = Modifier.padding(4.dp))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { /* Notification action */ }) {
+                        BadgedBox(badge = { Badge { Text("5") } }) {
+                            Icon(Icons.Outlined.Notifications, contentDescription = null, tint = StrawberryPink)
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = CreamBackground)
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = Color.White) {
+                NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Default.Home, null) }, label = { Text("Dashboard") })
+                NavigationBarItem(selected = false, onClick = {}, icon = { Icon(Icons.Default.List, null) }, label = { Text("Route") })
+                NavigationBarItem(selected = false, onClick = {}, icon = { Icon(Icons.Default.List, null) }, label = { Text("History") })
+                NavigationBarItem(selected = false, onClick = {}, icon = { Icon(Icons.Default.Person, null) }, label = { Text("More") })
+            }
+        },
+        containerColor = CreamBackground
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            item { Spacer(modifier = Modifier.height(0.dp)) }
+
+            // Stats Grid
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        StatusStatCard(
+                            modifier = Modifier.weight(1.5f),
+                            title = "Status",
+                            value = "Serving Now ●",
+                            subValue = "Accepting requests",
+                            icon = "🚛",
+                            valueColor = StatusGreen
+                        )
+                        NextStopStatCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Next Stop",
+                            value = nextStopEta,
+                            subValue = nextStopName,
+                            icon = "⏱️"
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Stops Ahead",
+                            value = "$stopsAhead",
+                            subValue = "Including yours",
+                            icon = "📍"
+                        )
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Success Rate",
+                            value = "98%",
+                            subValue = "Great job!",
+                            icon = "⭐"
+                        )
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Today",
+                            value = "12",
+                            subValue = "Total Stops",
+                            icon = "📊"
+                        )
+                    }
+                }
+            }
+
+            // Map Card
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    AdminDropoffMap(
+                        dropoffDisplays = dropoffDisplays,
+                        routePolyline = adminRoutePolyline,
+                        adminDropoffsWithEta = adminDropoffsWithEta,
+                        currentLocation = currentLocation,
+                        routeLoading = adminRouteLoading,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-            },
-            confirmButton = {
+            }
+
+            // CTA
+            item {
                 Button(
-                    onClick = {
-                        if (passcodeInput == AdminConfig.PASSCODE) {
-                            AdminSessionPrefs.setPersistedAdminSession(appContext, true)
-                            viewModel.markDeviceAsVendorForPush()
-                            viewModel.setAdminSessionPasscode(AdminConfig.PASSCODE)
-                            showListScreen = true
-                            showPasscodeDialog = false
-                            passcodeInput = ""
-                            passcodeError = ""
-                        } else {
-                            passcodeError = "Wrong passcode"
-                        }
-                    },
+                    onClick = { /* Could scroll to pending or open dialog */ },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ChocolateBrown)
                 ) {
-                    Text("OK")
+                    Text("View Pending Requests", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    if (dropoffDisplays.isNotEmpty()) {
+                        Badge(containerColor = StrawberryPink) { Text("${dropoffDisplays.size}", color = Color.White) }
+                    }
                 }
-            },
+            }
+            
+            // Recent Stops / Pending Section
+            item {
+                Text("Pending Requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextBrown)
+            }
+            
+            items(dropoffDisplays, key = { it.request.id }) { display ->
+                DropoffRequestRow(
+                    display = display,
+                    onApprove = { viewModel.updateDropoffStatus(display.request.id, "Approved") },
+                    onCancel = { viewModel.updateDropoffStatus(display.request.id, "Canceled") },
+                    onDone = { viewModel.markDropoffDone(display.request.id) },
+                    onSms = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:${display.request.phoneNumber}"))
+                        context.startActivity(intent)
+                    },
+                    onPhone = {
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${display.request.phoneNumber}"))
+                        context.startActivity(intent)
+                    },
+                    onMap = {
+                        val dest = "${display.request.latitude},${display.request.longitude}"
+                        val uri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$dest")
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        context.startActivity(intent)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusStatCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subValue: String,
+    icon: String,
+    valueColor: Color
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(SoftStrawberry, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(icon)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = valueColor)
+                Text(subValue, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NextStopStatCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subValue: String,
+    icon: String
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = IvoryCardBackground),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(icon, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(title, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = StrawberryPink)
+            Text(subValue, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+private fun StatCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subValue: String,
+    icon: String
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.Start) {
+            Text(icon)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = ChocolateBrown)
+            Text(title, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Text(subValue, style = MaterialTheme.typography.labelSmall, color = Color.LightGray, fontSize = 8.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun WelcomeCard(
+    name: String,
+    phoneNumber: String,
+    onEdit: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = SoftStrawberry),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(20.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Welcome back,",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextBrown
+                )
+                Text(
+                    text = "$name!",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = StrawberryPink
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Phone,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = TextBrown
+                    )
+                    Text(
+                        text = " $phoneNumber",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextBrown
+                    )
+                    IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit",
+                            modifier = Modifier.size(14.dp),
+                            tint = TextBrown
+                        )
+                    }
+                }
+            }
+            // Illustration Placeholder
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🚚🍦", style = MaterialTheme.typography.displayMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TruckStatusCard(
+    status: String,
+    etaMinutes: Int
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = IvoryCardBackground),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color(0xFFE8F5E9), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🚚", style = MaterialTheme.typography.titleLarge)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Truck Status", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(StatusGreen, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = StatusGreen
+                    )
+                }
+                Text(
+                    text = "We're in your area!",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
+            VerticalDivider(
+                modifier = Modifier.height(40.dp),
+                thickness = 1.dp,
+                color = Color.LightGray.copy(alpha = 0.5f)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.List,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = StrawberryPink
+                    )
+                    Text(" ETA", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = "$etaMinutes",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = StrawberryPink
+                    )
+                    Text(
+                        text = " min",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = StrawberryPink,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                Text("to your stop", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MapSection(
+    currentLocation: Pair<Double, Double>?,
+    dropoffDisplays: List<DropoffRequestDisplay>,
+    routePolyline: List<Pair<Double, Double>>,
+    routeLoading: Boolean,
+    routeError: String?
+) {
+    val center = when {
+        currentLocation != null -> LatLng(currentLocation.first, currentLocation.second)
+        dropoffDisplays.isNotEmpty() -> {
+            val first = dropoffDisplays.first().request
+            LatLng(first.latitude, first.longitude)
+        }
+        else -> LatLng(37.5, -122.0)
+    }
+    val startLatLng = currentLocation?.let { LatLng(it.first, it.second) }
+    val dropoffMarkers = dropoffDisplays.mapIndexed { index, d ->
+        val r = d.request
+        LatLng(r.latitude, r.longitude) to "${index + 1}. ${r.name}"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(280.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White)
+    ) {
+        RouteMapWithNativePolyline(
+            center = center,
+            startLatLng = startLatLng,
+            dropoffMarkers = dropoffMarkers,
+            routePolyline = routePolyline,
+            loading = routeLoading,
+            modifier = Modifier.fillMaxSize(),
         )
+        
+        // "Center on me" button placeholder
+        Card(
+            modifier = Modifier
+                .padding(12.dp)
+                .align(Alignment.BottomStart),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Home, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Center on me", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+    
+    if (routeError != null) {
+        Text(
+            text = routeError,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun RequestStopButton(
+    onClick: () -> Unit,
+    isLoading: Boolean
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = ChocolateBrown),
+        enabled = !isLoading
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(color = Color.White)
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🍦", style = MaterialTheme.typography.titleLarge)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Request a Stop",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    "Bring the ice cream to me!",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpcomingRouteSection(
+    name: String,
+    optimizedDropoffsWithEta: List<DropoffWithEta>,
+    dropoffDisplays: List<DropoffRequestDisplay>
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🚩", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Upcoming Route",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextBrown
+                )
+            }
+            Text(
+                "See full route >",
+                style = MaterialTheme.typography.labelLarge,
+                color = StrawberryPink
+            )
+        }
+
+        val displayList = if (optimizedDropoffsWithEta.isNotEmpty()) {
+            optimizedDropoffsWithEta
+        } else {
+            dropoffDisplays.map { d ->
+                DropoffWithEta(display = d, etaSecondsFromNow = -1L)
+            }
+        }
+
+        displayList.forEachIndexed { index, item ->
+            RouteItem(
+                index = index + 1,
+                name = item.display.request.name,
+                address = item.display.address,
+                etaSeconds = item.etaSecondsFromNow,
+                isUserStop = item.display.request.name.equals(name, ignoreCase = true)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RouteItem(
+    index: Int,
+    name: String,
+    address: String,
+    etaSeconds: Long,
+    isUserStop: Boolean
+) {
+    val etaText = if (etaSeconds >= 0) {
+        val etaTime = System.currentTimeMillis() + etaSeconds * 1000L
+        SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(etaTime))
+    } else {
+        "--:--"
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(SoftStrawberry, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$index",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = StrawberryPink
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (isUserStop) "Your Stop" else address.split(",").firstOrNull() ?: name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isUserStop) {
+                    Text(
+                        text = "Requested",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = StrawberryPink
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.List,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = Color.Gray
+                )
+                Text(
+                    text = " $etaText",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.LightGray
+                )
+            }
+        }
     }
 }
 
@@ -609,8 +1464,8 @@ private fun RouteMapWithNativePolyline(
         lifecycleOwner.lifecycle.addObserver(observer)
         // MapView never receives ON_START/ON_RESUME if we're already resumed when composed
         val state = lifecycleOwner.lifecycle.currentState
-        if (state >= State.STARTED) mapView.onStart()
-        if (state >= State.RESUMED) mapView.onResume()
+        if (state >= Lifecycle.State.STARTED) mapView.onStart()
+        if (state >= Lifecycle.State.RESUMED) mapView.onResume()
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView.onDestroy()
@@ -670,55 +1525,7 @@ private fun RouteMapAndListSection(
     routeLoading: Boolean,
     routeError: String?,
 ) {
-    val showMap = currentLocation != null || dropoffDisplays.isNotEmpty()
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (showMap) {
-            val center = when {
-                currentLocation != null -> LatLng(currentLocation.first, currentLocation.second)
-                dropoffDisplays.isNotEmpty() -> {
-                    val first = dropoffDisplays.first().request
-                    LatLng(first.latitude, first.longitude)
-                }
-                else -> LatLng(37.5, -122.0)
-            }
-            val startLatLng = currentLocation?.let { LatLng(it.first, it.second) }
-            val dropoffMarkers = dropoffDisplays.mapIndexed { index, d ->
-                val r = d.request
-                LatLng(r.latitude, r.longitude) to "${index + 1}. ${r.name}"
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .requiredHeight(240.dp),
-            ) {
-                RouteMapWithNativePolyline(
-                    center = center,
-                    startLatLng = startLatLng,
-                    dropoffMarkers = dropoffMarkers,
-                    routePolyline = routePolyline,
-                    loading = routeLoading,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            if (routeError != null) {
-                Text(
-                    text = routeError,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (displayList.isNotEmpty()) {
-                Text(
-                    text = if (displayList.any { it.etaSecondsFromNow >= 0 })
-                        "Route order & ETAs (5 min at each stop)"
-                    else
-                        "Dropoff locations (ETA when route available)",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-        }
-    }
+    // Old implementation replaced by MapSection and UpcomingRouteSection in the main layout
 }
 
 @Composable
@@ -828,7 +1635,7 @@ private fun DropoffListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (dropoffDisplays.isNotEmpty()) {
@@ -1046,9 +1853,105 @@ private fun FlavorCard(
     }
 }
 
+@Preview(showBackground = true, backgroundColor = 0xFFFFF9F2)
+@Composable
+fun WelcomeCardPreview() {
+    IceCreamAppTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            WelcomeCard(
+                name = "Jacque",
+                phoneNumber = "(770) 555-1234",
+                onEdit = {}
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFF9F2)
+@Composable
+fun TruckStatusCardPreview() {
+    IceCreamAppTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            TruckStatusCard(
+                status = "Available Now",
+                etaMinutes = 12
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFF9F2)
+@Composable
+fun RequestStopButtonPreview() {
+    IceCreamAppTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            RequestStopButton(
+                onClick = {},
+                isLoading = false
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFF9F2)
+@Composable
+fun RouteItemPreview() {
+    IceCreamAppTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            RouteItem(
+                index = 1,
+                name = "Oak Street",
+                address = "123 Oak St, Whitesburg",
+                etaSeconds = 300,
+                isUserStop = true
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFF9F2)
+@Composable
+fun UpcomingRouteSectionPreview() {
+    val sampleDropoffs = listOf(
+        DropoffWithEta(
+            display = DropoffRequestDisplay(
+                request = com.icecreamapp.sweethearts.data.DropoffRequest(id="1", name="Oak Street", phoneNumber="555-0001", latitude=0.0, longitude=0.0),
+                address = "Oak Street",
+                distanceMeters = 100.0
+            ),
+            etaSecondsFromNow = 600
+        ),
+        DropoffWithEta(
+            display = DropoffRequestDisplay(
+                request = com.icecreamapp.sweethearts.data.DropoffRequest(id="2", name="New Chapel Road", phoneNumber="555-0002", latitude=0.0, longitude=0.0),
+                address = "New Chapel Road",
+                distanceMeters = 200.0
+            ),
+            etaSecondsFromNow = 1200
+        ),
+        DropoffWithEta(
+            display = DropoffRequestDisplay(
+                request = com.icecreamapp.sweethearts.data.DropoffRequest(id="3", name="Jacque", phoneNumber="555-0003", latitude=0.0, longitude=0.0),
+                address = "Your Stop",
+                distanceMeters = 300.0
+            ),
+            etaSecondsFromNow = 1800
+        )
+    )
+    IceCreamAppTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            UpcomingRouteSection(
+                name = "Jacque",
+                optimizedDropoffsWithEta = sampleDropoffs,
+                dropoffDisplays = emptyList()
+            )
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
-private fun FlavorCardPreview() {
+fun FlavorCardPreview() {
     IceCreamAppTheme {
         FlavorCard(
             item = IceCreamMenuItem(

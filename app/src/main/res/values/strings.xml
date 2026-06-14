@@ -20,10 +20,13 @@
     <string name="name_required_error">Name is required</string>
     <string name="phone_required_error">Phone number is required</string>
     <string name="phone_incomplete_error">Enter a complete 10-digit U.S. phone number</string>
+    <string name="dropoff_approved_alert_title">Request approved</string>
+    <string name="dropoff_approved_alert_message">Your ice cream request was approved. We will see you soon.</string>
     <string name="dropoff_canceled_alert_title">Ice cream canceled</string>
     <string name="dropoff_canceled_alert_message">The ice cream was cancelled.</string>
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
     <string name="admin_logout_confirm_title">Leave Admin mode?</string>
     <string name="admin_logout_confirm_message">You will be logged out of Admin mode.</string>
+    <string name="admin_no_dropoff_requests">No Drop Off Requests at This Time</string>
 </resources>

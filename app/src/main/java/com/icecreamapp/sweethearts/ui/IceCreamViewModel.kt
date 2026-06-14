@@ -5,6 +5,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.icecreamapp.sweethearts.AdminConfig
 import com.icecreamapp.sweethearts.data.DropoffRepository
 import com.icecreamapp.sweethearts.data.DropoffRequest
 import com.icecreamapp.sweethearts.data.DropoffRequestDisplay
@@ -14,12 +15,15 @@ import com.icecreamapp.sweethearts.data.IceCreamRepository
 import com.icecreamapp.sweethearts.fcm.FcmTokenRepository
 import com.icecreamapp.sweethearts.fcm.FcmTopics
 import com.icecreamapp.sweethearts.R
+import com.icecreamapp.sweethearts.util.AdminSessionPrefs
+import com.icecreamapp.sweethearts.util.DropoffApproveAlertPrefs
 import com.icecreamapp.sweethearts.util.DropoffCancelAlertPrefs
 import com.icecreamapp.sweethearts.util.VendorNotificationPrefs
 import com.icecreamapp.sweethearts.util.decodePolyline
 import com.icecreamapp.sweethearts.util.distanceMeters
 import com.icecreamapp.sweethearts.util.formatDistance
 import com.icecreamapp.sweethearts.util.reverseGeocode
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +34,12 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import com.google.firebase.messaging.FirebaseMessaging
 
+import com.icecreamapp.sweethearts.util.UserProfilePrefs
+
+enum class IceCreamScreen {
+    WELCOME, SAVE_INFO, CUSTOMER_DASHBOARD, VENDOR_ACCESS, VENDOR_DASHBOARD
+}
+
 /**
  * ViewModel for the ice cream screen (MVVM).
  * Holds UI state and forwards actions to the repository.
@@ -39,6 +49,29 @@ class IceCreamViewModel(
     private val repository: IceCreamRepository = IceCreamRepository(),
     private val dropoffRepository: DropoffRepository = DropoffRepository(),
 ) : ViewModel() {
+
+    private val _currentScreen = MutableStateFlow(
+        if (UserProfilePrefs.hasProfile(application)) IceCreamScreen.CUSTOMER_DASHBOARD
+        else IceCreamScreen.WELCOME
+    )
+    val currentScreen: StateFlow<IceCreamScreen> = _currentScreen.asStateFlow()
+
+    private val _userName = MutableStateFlow(UserProfilePrefs.getName(application) ?: "")
+    val userName: StateFlow<String> = _userName.asStateFlow()
+
+    private val _userPhone = MutableStateFlow(UserProfilePrefs.getPhone(application) ?: "")
+    val userPhone: StateFlow<String> = _userPhone.asStateFlow()
+
+    fun setScreen(screen: IceCreamScreen) {
+        _currentScreen.value = screen
+    }
+
+    fun saveProfile(name: String, phone: String) {
+        UserProfilePrefs.saveProfile(application, name, phone)
+        _userName.value = name
+        _userPhone.value = phone
+        setScreen(IceCreamScreen.CUSTOMER_DASHBOARD)
+    }
 
     private val _menu = MutableStateFlow<List<IceCreamMenuItem>>(emptyList())
     val menu: StateFlow<List<IceCreamMenuItem>> = _menu.asStateFlow()
@@ -93,6 +126,9 @@ class IceCreamViewModel(
     private val _adminRouteLoading = MutableStateFlow(false)
     val adminRouteLoading: StateFlow<Boolean> = _adminRouteLoading.asStateFlow()
 
+    private val _adminRefreshing = MutableStateFlow(false)
+    val adminRefreshing: StateFlow<Boolean> = _adminRefreshing.asStateFlow()
+
     /** IDs to hide from admin list immediately when Approve/Cancel is tapped. */
     private val _hiddenFromAdminList = MutableStateFlow<Set<String>>(emptySet())
     val hiddenFromAdminList: StateFlow<Set<String>> = _hiddenFromAdminList.asStateFlow()
@@ -100,7 +136,11 @@ class IceCreamViewModel(
     private val _dropoffCanceledMessage = MutableStateFlow<String?>(null)
     val dropoffCanceledMessage: StateFlow<String?> = _dropoffCanceledMessage.asStateFlow()
 
+    private val _dropoffApprovedMessage = MutableStateFlow<String?>(null)
+    val dropoffApprovedMessage: StateFlow<String?> = _dropoffApprovedMessage.asStateFlow()
+
     private var pendingCanceledDropoffIdForAck: String? = null
+    private var pendingApprovedDropoffIdForAck: String? = null
 
     companion object {
         private const val DWELL_SECONDS = 5 * 60L
@@ -108,6 +148,11 @@ class IceCreamViewModel(
     }
 
     init {
+        // Persisted-admin devices must attach passcode before the first poll runs; MainScreen runs
+        // later, so restoring here avoids getDropoffRequests without adminPasscode (see-all stays empty).
+        if (AdminSessionPrefs.isPersistedAdminSession(application)) {
+            dropoffRepository.setAdminSessionPasscode(AdminConfig.PASSCODE)
+        }
         loadMenu()
         viewModelScope.launch {
             dropoffRepository.dropoffRequestsFlow()
@@ -129,6 +174,22 @@ class IceCreamViewModel(
                             _dropoffCanceledMessage.value =
                                 application.getString(R.string.dropoff_canceled_alert_message)
                         }
+                        val approvedMine = result.requests.firstOrNull { req ->
+                            req.isApprovedStatus() &&
+                                !DropoffApproveAlertPrefs.isApproveAlertAcknowledged(
+                                    application,
+                                    req.id,
+                                )
+                        }
+                        if (
+                            approvedMine != null &&
+                            _dropoffApprovedMessage.value == null &&
+                            _dropoffCanceledMessage.value == null
+                        ) {
+                            pendingApprovedDropoffIdForAck = approvedMine.id
+                            _dropoffApprovedMessage.value =
+                                application.getString(R.string.dropoff_approved_alert_message)
+                        }
                     }
                     val requestsForUi = if (dropoffRepository.isAdminSessionActive()) {
                         result.requests
@@ -145,6 +206,7 @@ class IceCreamViewModel(
                         }
                     }
                     _dropoffDisplays.value = list
+                        .sortedBy { it.request.createdAtMs ?: Long.MAX_VALUE }
                 }
         }
         viewModelScope.launch {
@@ -233,8 +295,13 @@ class IceCreamViewModel(
     }
 
     fun updateDropoffStatus(dropoffId: String, status: String) {
-        // Optimistically hide from the list immediately
-        _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
+        // Canceled requests are hidden immediately and permanently (backend won't return them).
+        // Approved requests are NOT hidden — they re-appear with "Approved" status after the
+        // next refresh so the admin can still see them, navigate to them, and contact the user.
+        val hideImmediately = status == "Canceled"
+        if (hideImmediately) {
+            _hiddenFromAdminList.value = _hiddenFromAdminList.value + dropoffId
+        }
         viewModelScope.launch {
             dropoffRepository.updateDropoffStatus(dropoffId, status)
                 .onSuccess {
@@ -242,8 +309,9 @@ class IceCreamViewModel(
                 }
                 .onFailure { e ->
                     _message.value = "Failed to update status to $status: ${e.message}"
-                    // Re-show if it failed
-                    _hiddenFromAdminList.value = _hiddenFromAdminList.value - dropoffId
+                    if (hideImmediately) {
+                        _hiddenFromAdminList.value = _hiddenFromAdminList.value - dropoffId
+                    }
                 }
         }
     }
@@ -373,6 +441,18 @@ class IceCreamViewModel(
         _dropoffSuccess.value = false
     }
 
+    fun cancelOwnDropoffRequest(dropoffId: String) {
+        viewModelScope.launch {
+            dropoffRepository.cancelOwnDropoffRequest(dropoffId)
+                .onSuccess {
+                    dropoffRepository.requestDropoffRefresh()
+                }
+                .onFailure { e ->
+                    _message.value = "Could not cancel request: ${e.message}"
+                }
+        }
+    }
+
     fun clearDropoffError() {
         _dropoffError.value = false
         _dropoffErrorMessage.value = null
@@ -387,10 +467,30 @@ class IceCreamViewModel(
         _dropoffCanceledMessage.value = null
     }
 
+    /** Call when the user dismisses the approve alert so we persist ack and hide the dialog. */
+    fun acknowledgeDropoffApprovedAlert() {
+        pendingApprovedDropoffIdForAck?.let { id ->
+            DropoffApproveAlertPrefs.acknowledgeApproveAlert(application, id)
+        }
+        pendingApprovedDropoffIdForAck = null
+        _dropoffApprovedMessage.value = null
+    }
+
     /** Pull latest dropoffs immediately (e.g. app resume) so the map matches admin changes sooner than the poll interval. */
     fun requestDropoffListRefresh() {
         viewModelScope.launch {
             dropoffRepository.requestDropoffRefresh()
+        }
+    }
+
+    /** Manual admin refresh: shows spinner while the network round-trip completes. */
+    fun refreshAdminList() {
+        if (_adminRefreshing.value) return
+        viewModelScope.launch {
+            _adminRefreshing.value = true
+            dropoffRepository.requestDropoffRefresh()
+            delay(1800)
+            _adminRefreshing.value = false
         }
     }
 

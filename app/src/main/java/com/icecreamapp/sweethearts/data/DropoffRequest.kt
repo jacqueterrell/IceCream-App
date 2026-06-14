@@ -13,6 +13,8 @@ data class DropoffRequest(
     val latitude: Double,
     val longitude: Double,
     val status: String? = null,
+    /** Unix epoch milliseconds from the server createdAt timestamp. Null if backend omits it. */
+    val createdAtMs: Long? = null,
 ) {
     /**
      * Whether this request should appear on the shared customer map and route list.
@@ -29,9 +31,13 @@ data class DropoffRequest(
         return s == "canceled" || s == "cancelled"
     }
 
+    fun isApprovedStatus(): Boolean {
+        val s = status?.trim()?.lowercase(Locale.ROOT) ?: return false
+        return s == "approved"
+    }
+
     companion object {
         private val TerminalStatuses = setOf(
-            "approved",
             "canceled",
             "cancelled",
             "done",

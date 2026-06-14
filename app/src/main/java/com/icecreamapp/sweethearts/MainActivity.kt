@@ -49,7 +49,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         lifecycleScope.launch {
-            ensureAnonymousSignIn()
+            try {
+                ensureAnonymousSignIn()
+            } catch (e: Exception) {
+                // Log or handle network error silently for now, 
+                // Firestore will retry or fail based on rules
+            }
             // registerDeviceToken requires auth — run after anonymous sign-in
             requestNotificationPermissionIfNeeded()
             MapsInitializer.initialize(this@MainActivity, MapsInitializer.Renderer.LEGACY) {

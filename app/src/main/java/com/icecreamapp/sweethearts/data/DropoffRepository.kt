@@ -87,11 +87,27 @@ class DropoffRepository {
             val lat = (map["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
             val lng = (map["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
             val status = map["status"] as? String
-            DropoffRequest(id = id, name = name, phoneNumber = phoneNumber, latitude = lat, longitude = lng, status = status)
+            val createdAtMs = (map["createdAtMs"] as? Number)?.toLong()
+            DropoffRequest(
+                id = id,
+                name = name,
+                phoneNumber = phoneNumber,
+                latitude = lat,
+                longitude = lng,
+                status = status,
+                createdAtMs = createdAtMs,
+            )
         }
         DropoffRequestsResult(requests = requests)
     }.getOrElse { e ->
         DropoffRequestsResult(emptyList(), "Could not load: ${e.message ?: "Unknown error"}")
+    }
+
+    suspend fun cancelOwnDropoffRequest(dropoffId: String): Result<Unit> = kotlin.runCatching {
+        Firebase.functions
+            .getHttpsCallable("cancelOwnDropoffRequest")
+            .call(mapOf("dropoffId" to dropoffId))
+            .await()
     }
 
     suspend fun markDropoffDone(dropoffId: String): Result<Unit> = kotlin.runCatching {
